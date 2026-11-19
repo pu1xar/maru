@@ -267,10 +267,13 @@ function Block({ p, block }: { p: Palette; block: DetailBlock }) {
         </View>
       );
     case "output":
+      // The web's TOOL_OUTPUT_FRAME: a thin border around a tool's output, no fill.
       return (
-        <Scrolling maxHeight={320}>
-          <Text style={[mono, { color: block.json ? strong : p.muted }]} selectable>{block.text}</Text>
-        </Scrolling>
+        <View style={[styles.outputFrame, { borderColor: withAlpha(p.border, 0.6) }]}>
+          <Scrolling maxHeight={320}>
+            <Text style={[mono, { color: block.json ? strong : p.muted }]} selectable>{block.text}</Text>
+          </Scrolling>
+        </View>
       );
     case "plain":
       return (
@@ -465,6 +468,7 @@ const styles = StyleSheet.create({
   panel: { gap: 8, marginTop: 2, marginBottom: 6, paddingBottom: 8 },
   pathRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   diff: { maxHeight: 384, borderRadius: 6, borderWidth: 1, paddingVertical: 4 },
+  outputFrame: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 6 },
   diffLine: { flexDirection: "row" },
   diffNote: { paddingHorizontal: 8 },
   diffNumber: { textAlign: "right", paddingLeft: 8 },

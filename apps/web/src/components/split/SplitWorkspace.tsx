@@ -36,6 +36,7 @@ import { leaveToShell } from "~/lib/shellKeys";
 import {
   canInsertAt,
   computeFrames,
+  dropHitAt,
   dropZoneAt,
   focusedPane,
   insertPreview,
@@ -53,7 +54,7 @@ import {
   type Rect,
 } from "~/lib/paneLayout";
 import { sourcePaneId } from "~/lib/paneDrag";
-import { allPanes } from "~/lib/paneTabs";
+import { allPanes, tabOfSession } from "~/lib/paneTabs";
 import { createShellIn, getShellList, onShellsRead, refreshShells, useShellList } from "~/lib/shellList";
 import { onSessionSummary, rekeySession } from "~/lib/sessionViewState";
 import { socketHub } from "~/lib/socket";
@@ -69,16 +70,12 @@ import { SessionPane } from "./SessionPane";
 import { labelsOf, ShellPane } from "./ShellPane";
 import { getPaneLayout, getPaneTabs, paneActions, persistPaneLayout, requestPane, usePaneLayout, usePaneTabs } from "./paneStore";
 import { SplitTabs } from "./SplitTabs";
+import { registerSplitHost, useExternalDrag } from "./externalDrop";
+import { NO_ROOM, PANE_FRAME } from "./paneFrame";
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
-/**
- * The smallest pane. 360px is the conversation width the right panel keeps (DESIGN.md 6e) and fits
- * the header's controls; 240px tall keeps the header, a few lines and the composer.
- */
-export const PANE_FRAME: FrameOptions = { minWidth: 360, minHeight: 240, gap: 1 };
-/** Said when a split is refused because the line it would join cannot take another pane at the minimum size. */
-const NO_ROOM = "No room for another pane";
+export { PANE_FRAME };
 /** Below this width only the focused pane shows and splitting is off. */
 export const NARROW_QUERY = "(max-width: 899px)";
 /** How long a removed or missing session is left to settle (a move re-adds it under a new key) before its pane closes. */
@@ -116,6 +113,26 @@ export function SplitWorkspace({ sessions }: { sessions: Map<string, SessionSumm
   usePaneKeys(layout, narrow, frames, sessions);
   const focusedSessionCwd = focused?.sessionKey ? (summaries.get(focused.sessionKey)?.cwd ?? null) : null;
   const drag = usePaneDrops(containerRef, narrow, rectOf, frames, full, focusedSessionCwd);
+  // A lean window's session carried over this view (externalDrop.ts) is previewed like a sidebar row.
+  const external = useExternalDrag();
+  const externalMarks = useMemo<DragMarks | null>(() => {
+    const box = containerRef.current?.getBoundingClientRect();
+    if (!external || !box || !size || narrow || tabOfSession(getPaneTabs(), external.key)) return null;
+    const hit = dropHitAt(layout, frames, full, external.x - box.left, external.y - box.top, PANE_FRAME);
+    return hit && (hit.target || hit.noRoom) ? hit : null;
+  }, [external, layout, frames, full, size, narrow]);
+  const marks: DragMarks | null = drag ?? externalMarks;
+  useLayoutEffect(() => {
+    registerSplitHost({
+      box: () => {
+        const el = containerRef.current;
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, w: Math.floor(el.clientWidth), h: Math.floor(el.clientHeight) };
+      },
+    });
+    return () => registerSplitHost(null);
+  }, []);
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
@@ -141,22 +158,22 @@ export function SplitWorkspace({ sessions }: { sessions: Map<string, SessionSumm
             })
           : null}
         {!narrow && frames ? frames.dividers.map((d) => <PaneDivider key={d.splitId} divider={d} containerRef={containerRef} />) : null}
-        {drag?.noRoom ? (
+        {marks?.noRoom ? (
           <div
             aria-hidden
             data-drop-noroom=""
             className="pointer-events-none absolute z-30 flex items-center justify-center rounded-md bg-destructive/10 ring-2 ring-inset ring-destructive/50"
-            style={{ left: drag.noRoom.x + 3, top: drag.noRoom.y + 3, width: drag.noRoom.w - 6, height: drag.noRoom.h - 6 }}
+            style={{ left: marks.noRoom.x + 3, top: marks.noRoom.y + 3, width: marks.noRoom.w - 6, height: marks.noRoom.h - 6 }}
           >
             <span className="rounded-md bg-background px-2 py-1 text-xs font-medium text-destructive-foreground shadow-sm">{NO_ROOM}</span>
           </div>
         ) : null}
-        {drag?.preview ? (
+        {marks?.preview ? (
           <div
             aria-hidden
-            data-drop-preview={drag.target ? `${drag.target.paneId ?? "empty"}:${drag.target.zone}` : undefined}
+            data-drop-preview={marks.target ? `${marks.target.paneId ?? "empty"}:${marks.target.zone}` : undefined}
             className="pointer-events-none absolute z-30 rounded-md bg-primary/15 ring-2 ring-inset ring-primary/60"
-            style={{ left: drag.preview.x + 3, top: drag.preview.y + 3, width: drag.preview.w - 6, height: drag.preview.h - 6 }}
+            style={{ left: marks.preview.x + 3, top: marks.preview.y + 3, width: marks.preview.w - 6, height: marks.preview.h - 6 }}
           />
         ) : null}
       </div>
@@ -644,6 +661,9 @@ interface DropTarget {
   paneId: string | null;
   zone: DropZone;
 }
+
+/** What the view marks while something is carried over it: the drop's preview, or an edge with no room. */
+type DragMarks = Pick<DragState, "target" | "preview" | "noRoom">;
 
 interface DragState {
   source: DragSource;

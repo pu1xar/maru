@@ -12,6 +12,7 @@ import { desktopBridge } from "./desktopBridge.ts";
 import {
   EMPTY_REGISTRY,
   applyLeanMessage,
+  closesLeanWindow,
   isLeanSearch,
   leanKeys,
   leanPath,
@@ -35,7 +36,11 @@ type Wire =
   /** A page that just started asks every lean window to announce itself. */
   | { type: "hello" }
   /** Asks the lean window of this session to come forward (the popup is another page's). */
-  | { type: "focus"; key: string };
+  | { type: "focus"; key: string }
+  /** A lean window's header is being dragged (key), or the drag ended (null): the pages know which session a drop would carry. */
+  | { type: "lean-drag"; key: string | null }
+  /** What a page did with the dropped lean window's session (PlaceOutcome); the window closes when it joined the split view. */
+  | { type: "split-result"; key: string; outcome: string };
 
 let registry: LeanRegistry = EMPTY_REGISTRY;
 let keys: ReadonlySet<string> = leanKeys(registry);
@@ -108,8 +113,52 @@ function onWire(msg: Wire): void {
     setRegistry(applyLeanMessage(registry, msg));
     return;
   }
+  if (msg.type === "lean-drag") {
+    remoteDragKey = msg.key;
+    for (const l of [...remoteDragListeners]) l(msg.key);
+    return;
+  }
+  if (msg.type === "split-result") {
+    if (msg.key === ownKey && closesLeanWindow(msg.outcome)) closeSelf();
+    return;
+  }
   if (msg.type === "hello") announce();
   if (msg.type === "focus" && msg.key === ownKey) window.focus();
+}
+
+// ---- A lean window dragged onto a page's split view (browser, DESIGN.md 6x) ----
+
+let remoteDragKey: string | null = null;
+const remoteDragListeners = new Set<(key: string | null) => void>();
+
+/** The session of the lean window being dragged over this page now (a drag's data is hidden until the drop). */
+export function remoteDragKeyNow(): string | null {
+  return remoteDragKey;
+}
+
+export function onRemoteDrag(listener: (key: string | null) => void): () => void {
+  remoteDragListeners.add(listener);
+  return () => remoteDragListeners.delete(listener);
+}
+
+/** The lean window's header started (key) or ended (null) a drag. */
+export function announceLeanDrag(key: string | null): void {
+  post({ type: "lean-drag", key });
+}
+
+/** This page took the dropped lean window's session: tells that window what came of it. */
+export function announceSplitResult(key: string, outcome: string): void {
+  post({ type: "split-result", key, outcome });
+}
+
+/** The lean window closes itself after its session joined a split view; the opener is brought forward first, best effort. */
+function closeSelf(): void {
+  try {
+    window.opener?.focus();
+  } catch {
+    // A closed or foreign opener: nothing to bring forward.
+  }
+  window.close();
 }
 
 // ---- A lean window's own announcements (browser) ----

@@ -19,6 +19,17 @@ export function leanPath(sessionKey: string): string {
   return `/?${q.toString()}`;
 }
 
+/**
+ * The drag type of a lean window's header in a browser (DESIGN.md 6x): its data is the session key.
+ * A page that holds the split view takes it as a drop (components/ExternalSessionDrop.tsx).
+ */
+export const SESSION_DRAG_TYPE = "application/x-maru-session";
+
+/** Whether a drop merges the lean window into the split view and so closes it: the session is now in a pane. */
+export function closesLeanWindow(outcome: string): boolean {
+  return outcome === "placed" || outcome === "focused";
+}
+
 // ---- Dragging out of the window ----
 
 export interface Size {

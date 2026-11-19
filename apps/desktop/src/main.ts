@@ -12,11 +12,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, session, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, screen, session, type IpcMainInvokeEvent } from "electron";
 import type { DesktopDevice } from "@maru/shared";
 import { attachAuth } from "./auth.ts";
 import { readLeanRequest } from "./leanState.ts";
 import { LeanWindows } from "./leanWindows.ts";
+import { DropReplies, SplitDragTracker, closesAfter, contentPoint } from "./splitDrag.ts";
 import { isServerUrl } from "./links.ts";
 import { menuTemplate } from "./menu.ts";
 import { readPairingInput, readPairingLink, readServer } from "./pairingInput.ts";
@@ -32,6 +33,10 @@ const LINK_SCHEME = "maru";
 declare const __MARU_APP_ID__: string | undefined;
 const APP_ID = typeof __MARU_APP_ID__ === "string" ? __MARU_APP_ID__ : "dev.maru.desktop";
 /** The phone app's reconnect pause (apps/mobile connection.ts): 1 s doubling to 15 s, no retry count. */
+/** How long the main page has to place a dropped lean window (it may have to switch to the split view and measure it first). */
+const SPLIT_DROP_WAIT_MS = 8000;
+/** macOS: a lean window that has not moved for this long was let go (the OS reports no end of a window move). */
+const SPLIT_DROP_IDLE_MS = 350;
 const MIN_RETRY_MS = 1000;
 const MAX_RETRY_MS = 15_000;
 
@@ -347,9 +352,51 @@ function start(): void {
       stateFile: path.join(userData, "lean-windows.json"),
       guard: (wc) => win?.guard(wc),
       contextMenu: (w, params) => win?.contextMenu(w, params),
+      track: (w) => trackSplitDrag(w),
       onChange: pushLean,
       log,
     });
+    // A lean window moved over the main window goes back into its split view (splitDrag.ts, DESIGN.md
+    // 6x). The cursor over the main page is sent to it for the drop preview; letting go there asks
+    // the page to place the session, and the window closes when it did. Linux gives no end of a
+    // move, so the window is only a window there.
+    const dropReplies = new DropReplies();
+    /** The main page's client pixels under a screen point, or null when the main window is not showing the app there. */
+    const mainPoint = (cursor: { x: number; y: number }) => {
+      const m = win?.win;
+      if (!m || m.isDestroyed() || !m.isVisible() || m.isMinimized() || win?.showing !== "app") return null;
+      return contentPoint(cursor, m.getContentBounds(), m.webContents.getZoomFactor());
+    };
+    const trackSplitDrag = (leanWin: BrowserWindow): (() => void) => {
+      if (process.platform !== "darwin" && process.platform !== "win32") return () => {};
+      const tracker = new SplitDragTracker({
+        cursor: () => screen.getCursorScreenPoint(),
+        windowBounds: () => leanWin.getBounds(),
+        mainPoint,
+        preview: (p) => {
+          const target = win?.win;
+          const key = lean.keyOf(leanWin);
+          if (target && !target.isDestroyed()) target.webContents.send("maru:split-drag", p && key ? { key, x: p.x, y: p.y } : null);
+        },
+        drop: (p) => {
+          const target = win?.win;
+          const key = lean.keyOf(leanWin);
+          if (!target || target.isDestroyed() || !key) return;
+          void dropReplies.ask((id) => target.webContents.send("maru:split-drop", { id, key, x: p.x, y: p.y }), SPLIT_DROP_WAIT_MS).then((outcome) => {
+            if (!closesAfter(outcome)) return;
+            win?.focus();
+            if (!leanWin.isDestroyed()) leanWin.close();
+          });
+        },
+        // macOS reports `moved` as `move` and has no end of a move: the window stopping is the end.
+        idleMs: process.platform === "darwin" ? SPLIT_DROP_IDLE_MS : null,
+        setTimer: (fn, ms) => setTimeout(fn, ms),
+        clearTimer: (h) => clearTimeout(h as NodeJS.Timeout),
+      });
+      leanWin.on("move", () => tracker.moved());
+      if (process.platform === "win32") leanWin.on("moved", () => tracker.ended());
+      return () => tracker.dispose();
+    };
     /** The app window with the keyboard: a lean window, else the main one. */
     const focusedWindow = (): BrowserWindow | null => {
       const f = BrowserWindow.getFocusedWindow();
@@ -478,6 +525,13 @@ function start(): void {
       const request = readLeanRequest(raw, p.server);
       if (!request) throw new Error("not allowed");
       lean.open(request);
+    });
+    // The main page's answer to a lean window let go over it.
+    ipcMain.handle("maru:split-drop-result", (e, id: unknown, outcome: unknown) => {
+      fromApp(e);
+      if (!win?.win || e.senderFrame !== win.win.webContents.mainFrame) throw new Error("not allowed");
+      if (typeof id !== "string" || typeof outcome !== "string") return false;
+      return dropReplies.answer(id, outcome);
     });
     ipcMain.handle("maru:lean-focus", (e, key: unknown) => (fromApp(e), typeof key === "string" && lean.focus(key)));
     ipcMain.handle("maru:lean-windows", (e) => (fromApp(e), lean.list()));

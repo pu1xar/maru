@@ -134,6 +134,19 @@ export interface MaruDesktopBridge {
   /** The open lean windows (window id and session key), now and on every change; returns the unsubscribe. */
   getLeanWindows?(): Promise<DesktopLeanWindow[]>;
   onLeanWindows?(listener: (windows: DesktopLeanWindow[]) => void): () => void;
+  /**
+   * A lean window being moved over the main window (DESIGN.md 6x, the desktop app's way back into
+   * the split view): the cursor in this page's client pixels while it is over the page, null once
+   * it is not. `key` is the window's session. Returns the unsubscribe. Absent in an older shell.
+   */
+  onSplitDrag?(listener: (drag: DesktopSplitDrag | null) => void): () => void;
+  /**
+   * The lean window was let go over this page at that point. The page answers with what it did
+   * (`replySplitDrop`, a `PlaceOutcome`); the main process closes the window when the session
+   * joined the split view.
+   */
+  onSplitDrop?(listener: (drop: DesktopSplitDrag & { id: string }) => void): () => void;
+  replySplitDrop?(id: string, outcome: string): Promise<void>;
   /** Keep this window above the others (a lean window's pin, and the Window menu's item). */
   getKeepOnTop?(): Promise<boolean>;
   setKeepOnTop?(on: boolean): Promise<boolean>;
@@ -145,6 +158,13 @@ export interface MaruDesktopBridge {
    * opened on. Returns the unsubscribe. Absent in an older shell.
    */
   onCopyUiName?(listener: () => void): () => void;
+}
+
+/** A lean window's session carried over the main window, at the cursor in the page's client pixels. */
+export interface DesktopSplitDrag {
+  key: string;
+  x: number;
+  y: number;
 }
 
 /** One open lean window as the main process lists it. */

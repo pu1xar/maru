@@ -70,9 +70,12 @@ function isJsonDocumentText(text: string): boolean {
 function StructuredValue({
   value,
   highlightJson = false,
+  framed = false,
 }: {
   readonly value: unknown;
   readonly highlightJson?: boolean;
+  /** A tool's output: a thin border sets it apart from the call above it (TOOL_OUTPUT_FRAME). */
+  readonly framed?: boolean;
 }) {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   if (!text) return null;
@@ -82,6 +85,7 @@ function StructuredValue({
     <pre
       className={cn(
         "max-h-80 overflow-auto",
+        framed && TOOL_OUTPUT_FRAME,
         language === null ? "text-muted-foreground" : "text-foreground/85",
         monoClassName,
       )}
@@ -174,8 +178,15 @@ function DiffView({ diff, path }: { readonly diff: string; readonly path: string
   );
 }
 
+/**
+ * The border around a tool's output (user request 2026-11-19: a command's result read as part of
+ * the highlighted command above it). Only the border: no fill, the text colors stay. Android's
+ * WorkRows "output" block draws the same frame.
+ */
+const TOOL_OUTPUT_FRAME = "rounded-md border border-border/60 px-2 py-1.5";
+
 function ToolOutput({ output }: { readonly output: string | null }) {
-  return output ? <StructuredValue value={output} highlightJson /> : null;
+  return output ? <StructuredValue value={output} highlightJson framed /> : null;
 }
 
 function ToolCallBody(props: {

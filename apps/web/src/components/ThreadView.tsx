@@ -4,7 +4,7 @@
 // (DESIGN.md 6i) and the meta line under the title (account, folder, holder; SessionMetaLine.tsx,
 // DESIGN.md 6l) are maru's own. Whether this view can send is said in the composer's place
 // (ThreadComposer); the header says no sentence about it.
-import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import type { SessionSummary, ThreadSnapshot } from "@maru/shared";
 import { CircleAlertIcon, MessageSquareTextIcon, SquareTerminalIcon, TerminalIcon, WifiOffIcon } from "lucide-react";
 
@@ -96,11 +96,14 @@ export interface ThreadNavigation {
 export function ThreadView({
   session,
   headerActions,
+  headerDrag,
   navigateTo,
   windowKeys = true,
 }: {
   session: SessionSummary;
   headerActions?: ReactNode;
+  /** Makes the header's title a drag source (a browser's lean window, DESIGN.md 6x). */
+  headerDrag?: { onDragStart: (e: DragEvent<HTMLElement>) => void; onDragEnd: () => void; title: string };
   navigateTo?: ThreadNavigation | null;
   /**
    * This conversation hears the window-wide keys (lib/windowKeys.ts). The split view passes false
@@ -234,7 +237,14 @@ export function ThreadView({
         ) : (
           <OpenAI aria-hidden className="size-4 shrink-0 text-foreground @max-[21rem]/thread-header:hidden" />
         )}
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
+        <div
+          className="flex min-w-0 flex-1 flex-col justify-center"
+          draggable={headerDrag ? true : undefined}
+          onDragStart={headerDrag?.onDragStart}
+          onDragEnd={headerDrag?.onDragEnd}
+          title={headerDrag?.title}
+          data-session-drag-handle={headerDrag ? "" : undefined}
+        >
           <WorkspaceBreadcrumb ariaLabel="Conversation location" className="overflow-clip [overflow-clip-margin:2px]">
             <ThreadBreadcrumb
               rootTitle={rootTitle}

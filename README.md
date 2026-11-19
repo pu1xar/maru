@@ -1,47 +1,178 @@
-# maru
+<p align="center">
+  <img src="apps/web/public/favicon.svg" width="72" height="72" alt="maru logo" />
+</p>
 
-maru is a personal chat UI for [Claude Code](https://code.claude.com) and [Codex](https://github.com/openai/codex) sessions. It runs as a small local server and shows every session of your Claude and Codex accounts in one window, in a browser, in an Electron desktop app, or in an Android app.
+<h1 align="center">maru</h1>
 
-It reads the transcripts and daemons that the two CLIs already keep, so sessions you started in a terminal appear in the list and update live. A session that is stopped can be continued from the UI. A session that a terminal still has open is shown read-only. Sessions started from maru run through the official Claude Agent SDK (Claude) and the Codex app-server (Codex), with permission prompts turned off, so treat the server like a shell on your machine (see [Security model](#security-model)).
+<p align="center">A local chat UI for the Claude Code and Codex sessions on your Mac, in a browser, a desktop window or an Android app</p>
 
-maru is a single-user tool, built for one person on one Mac. It is published as is, without a support promise.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT" /></a>
+  <a href="https://github.com/pu1xar/maru/actions/workflows/ci.yml"><img src="https://github.com/pu1xar/maru/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
+  <a href="https://github.com/pu1xar/maru/releases/latest"><img src="https://img.shields.io/github/v/release/pu1xar/maru" alt="Latest release" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/pu1xar/maru/releases/latest"><strong>Android APK</strong></a>
+  &nbsp;|&nbsp;
+  <a href="#install"><strong>Install from source</strong></a>
+  &nbsp;|&nbsp;
+  <a href="#documentation"><strong>Docs</strong></a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/hero-light.webp" />
+    <img src="docs/assets/hero.webp" width="100%" alt="maru with the session list grouped into Storefront, API and Side projects, a finished Claude Code conversation about a rounding bug, and a Markdown file with a Mermaid diagram open in the right panel" />
+  </picture>
+</p>
+
+## What is maru
+
+maru is a small server on your Mac and a web UI on top of it. It shows the sessions of your Claude Code and Codex accounts in one window: the ones you start in maru and the ones you started in a terminal.
+
+- It reads the transcripts and daemons that the two CLIs already keep, so a session started in a terminal appears in the list and updates live. A session a terminal still has open is shown read only, and a stopped one can be continued from maru
+- Sessions started from maru run through the official Claude Agent SDK (Claude) and the Codex app-server (Codex), with permission prompts turned off. Treat the server like a shell on your machine (see [Security model](#security-model))
+- You sign in to the unmodified CLIs with your own accounts, and maru never receives your password or sign-in code. Only the optional usage switches read the tokens the CLIs stored (see [Authentication and Anthropic's terms](#authentication-and-anthropics-terms))
+
+maru is a single-user tool, built for one person on one Mac. It is published as is, without a support promise. The UI language is English.
+
+The screenshots on this page come from an isolated instance with made-up sessions ([scripts/screenshots](scripts/screenshots/capture.mjs)).
 
 ## Features
 
-Everything below is in the code of this repository.
+<table>
+<tr>
+<td width="50%" valign="middle">
 
-- Session list
-  - A list of the sessions you chose from all sessions of the configured Claude and Codex accounts (a new session made in maru joins the list by itself, others come in through "Add existing session", and "Remove from list" leaves the session files alone), grouped into user-defined Groups, with pinned sessions, folders that fold, an archive, a lock, rename, trash with restore, move to another account, and a working-folder change (rehome)
-  - Live status (running, waiting for input, idle, closed) and which side holds the session (maru or a terminal)
-- Conversation view
-  - Timeline with markdown, code highlighting, tool rows, diffs, Mermaid diagrams and images, with windowed loading of long histories
-  - Composer with slash commands, attachments (paste, drop, file picker), a queue for messages sent while a turn runs, model and effort pickers, and the question, plan and approval dialogs of both agents
-  - Rewind a conversation or the code to an earlier message, and fork from a message
-  - Search inside a conversation and across all sessions
-- Terminal mode: the same conversation drawn like the Claude Code CLI
-- Right panel: a file explorer with file preview tabs, and an Activity tab with subagents and background tasks
-- Split view: several sessions and shells side by side in tab-like layouts, built by drag and drop
-- Lean window: one session in its own small window
-- Shell terminals: shells on a tmux server of their own, attached through xterm.js, which survive a restart of the web server
-- Usage: rate-limit meters per account and a dashboard of running and waiting sessions
-- Android app (Expo, Android only): the session list, conversation, shell and search, pairing by QR code, over-the-air updates served by your own server, optional push notifications through Firebase Cloud Messaging
-- Desktop app (Electron, macOS and Windows installers): the web UI in its own window, paired like the Android app, with signed self-updates
+### Claude Code and Codex in one list
 
-The UI language is English.
+Sessions of every configured account, grouped into your own Groups, with Pinned and Archive sections. Each row shows its live status (Running, Waiting for input, Open, Closed, Error) and whether maru or a terminal holds it. "Add existing session" picks sessions from your accounts, and "Remove from list" leaves the session files alone.
 
-## Requirements
+</td>
+<td width="50%">
+  <img src="docs/assets/codex.webp" width="100%" alt="A Codex session in the list next to Claude sessions, with a file change opened to show its diff" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
 
-- macOS. maru is developed and tested on macOS only
-  - Code that assumes macOS: the folder picker (`osascript`), reading Claude Code credentials from the login Keychain (`security`), the `~/.Trash` stub folder, Keychain storage of the desktop pairing, and the Android build defaults (Android Studio on macOS)
-  - Linux may run the core (the server, host and web UI use `ps`, `pgrep`, `lsof` and unix sockets) but has not been tried. Windows is supported only as a target of the desktop app, not for the server
-- Node.js 26 or newer
-- pnpm 9 (the repository pins `pnpm@9.15.0` in `package.json`)
-- For Claude sessions: the Claude Code CLI, signed in (see [Authentication](#authentication-and-anthropics-terms)). maru finds it in this order: `claudeBin` in the config file, `claude` on the `PATH` of the server, then `~/.local/bin/claude` (where the native installer puts it)
-- For Codex sessions: the Codex CLI, signed in, with its app-server daemon running (`codex remote-control start`). An account without a running daemon is read from its state database and cannot be driven
-- tmux, for the shell terminals
-- For the Android app: Android Studio (its bundled JBR) and the Android SDK, and Node with npm for `apps/mobile`
+### The whole conversation
 
-## Quick start
+Markdown, code highlighting, tool calls grouped into rows that open, diffs with line numbers, plan cards, Mermaid diagrams and images. The composer has slash commands, attachments (paste, drop, file picker), model and effort pickers, and the question, plan and approval panels of both agents.
+
+</td>
+<td width="50%">
+  <img src="docs/assets/plan-mermaid.webp" width="100%" alt="An approved plan card followed by a Mermaid sequence diagram of a request path" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Subagents and tasks
+
+Subagent cards open the subagent's own conversation. The task list shows where a turn stands, and the Activity tab in the right panel lists the subagents, workflows and background commands that are still running, with Stop and Resume.
+
+</td>
+<td width="50%">
+  <img src="docs/assets/subagents.webp" width="100%" alt="A running Claude session with a to-do list, a finished subagent card, a running subagent card and the Activity tab" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Split view
+
+Drag sessions and shells from the sidebar into panes, side by side or stacked, and keep several layouts as tabs. Keyboard shortcuts split, move between and close panes. A session dragged out of the app window opens in its own small window.
+
+</td>
+<td width="50%">
+  <img src="docs/assets/split-view.webp" width="100%" alt="Split view with two tabs: three conversations and a shell in four panes" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Terminal mode
+
+The same conversation drawn like the Claude Code CLI, with its tool blocks, diffs and status line. Switch per session with the button in the header (⌥⌘T), or make it the default in Settings, Appearance.
+
+</td>
+<td width="50%">
+  <img src="docs/assets/terminal-mode.webp" width="100%" alt="A conversation in terminal mode with a colored diff and a Markdown table" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Shells
+
+Shells (the Terminal section of the sidebar) on a tmux server of maru's own, attached through xterm.js. They survive a restart of the web server and can be opened in split view next to a session (⌘J opens the shells, ⌘⇧J a new one).
+
+</td>
+<td width="50%">
+  <img src="docs/assets/shell.webp" width="100%" alt="The shell screen with two shells, one showing a commit log and a passing test run" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Dashboard and usage
+
+Needs attention (questions, sessions waiting for input, errors), Running (turns, subagents and workflows with Stop) and Usage: the 5-hour and 7-day rate limits of each account with a 7-day trend. Usage reading is off by default (see [Configuration](#configuration)).
+
+</td>
+<td width="50%">
+  <img src="docs/assets/dashboard.webp" width="100%" alt="The dashboard with one session waiting for input, one running session with a subagent, and usage bars with a trend chart for three accounts" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Accounts
+
+Settings, Accounts lists every Claude and Codex account with its folder and login status. Add account writes the config file, creates the folder and opens a shell with the CLI's own sign-in command typed in. Several accounts of one provider work side by side.
+
+</td>
+<td width="50%">
+  <img src="docs/assets/accounts.webp" width="100%" alt="Settings, Accounts with two Claude accounts and one Codex account, all signed in, and the usage switches" />
+</td>
+</tr>
+</table>
+
+**Also included**
+
+- Queue: messages sent while a turn runs wait in a queue and can go back to the input. For a Claude session that maru runs, "Send now" (Esc) hands the queued message to the running turn
+- "Rewind to here" (conversation, code or both) and "Fork from here" on any of your messages
+- Search: "Find in conversation" (⌘F) inside a session, and the sidebar search across every session's conversation
+- Right panel: a Files tab with a file tree and file previews (Markdown and Mermaid rendered), and the Activity tab
+- Session management: rename, "Move to another account", "Change working folder" (Claude), "Copy resume command", and deleting in Settings, Sessions (a session over 1 MB goes to a trash with restore, a smaller one is removed for good)
+- Appearance: System, Light and Dark themes, fonts and sizes per area
+- [Android app](#android-app): the session list, conversations, shells and search, paired by QR code, with over-the-air updates served by your own server and optional push notifications through your own Firebase project
+- [Desktop app](#desktop-app): the web UI in its own Electron window, for macOS and Windows, paired like the Android app and kept current by signed self-updates. You build and sign it yourself
+
+## Install
+
+maru runs from a checkout of this repository. There is no installer for the server.
+
+### Requirements
+
+| What | Version | Needed for |
+|---|---|---|
+| macOS | - | maru is developed and tested on macOS only (see the notes below) |
+| Node.js | 26 or newer | the server, the host and the build |
+| pnpm | 9 (the repository pins `pnpm@9.15.0` in `package.json`) | installing and running |
+| Claude Code CLI | signed in | Claude sessions |
+| Codex CLI | signed in, with its app-server daemon running (`codex remote-control start`) | Codex sessions |
+| tmux | - | shells |
+| Android Studio (its bundled JBR) and the Android SDK, Node with npm | - | building the Android app yourself only |
+
+- Code that assumes macOS: the folder picker (`osascript`), reading Claude Code credentials from the login Keychain (`security`), the `~/.Trash` stub folder, Keychain storage of the desktop pairing, and the Android build defaults (Android Studio on macOS)
+- Linux may run the core (the server, host and web UI use `ps`, `pgrep`, `lsof` and unix sockets) but has not been tried. Windows is supported only as a target of the desktop app, not for the server
+- maru finds the Claude CLI in this order: `claudeBin` in the config file, `claude` on the `PATH` of the server, then `~/.local/bin/claude` (where the native installer puts it)
+- A Codex account without a running daemon is read from its state database and cannot be driven
+
+### Quick start
 
 1. Install the dependencies
 
@@ -71,16 +202,38 @@ The UI language is English.
 
 5. Open http://127.0.0.1:8024
 
-The session list starts empty. Use "Add existing session" in the sidebar to search the sessions of your accounts and pick the ones to show, or start a new session from maru.
-
 The server binds to `127.0.0.1` only. The port is 8024, or the `PORT` environment variable.
 
-Development with hot reload runs two processes. The Vite dev server proxies `/api` and `/ws` to the server (`MARU_PORT` names the server port when it is not 8024).
+### First run
+
+The session list starts empty: maru lists only the sessions you choose.
+
+1. Open Settings (bottom of the sidebar), Accounts. maru detects `~/.claude` and `~/.codex` when they exist. Each account shows Signed in, Not signed in, CLI not found or Unknown
+2. To add an account, press Add account, choose the provider, an id and a folder, and finish the CLI's sign-in in the shell that opens. Press Refresh, then restart maru (the server reads its accounts at start)
+3. In the sidebar, press Add (the plus button) and choose "Add existing session" to search your accounts' sessions and pick the ones to show, or "New session" to start one from maru
+4. Optional: the usage switches on the Accounts page turn on the rate-limit meters. Read [Authentication and Anthropic's terms](#authentication-and-anthropics-terms) first
+
+## Android app
+
+The Android app is a separate native app, not the web UI in a wrapper. It needs your maru server reachable over HTTPS.
+
+1. Download `maru-<version>.apk` from the [latest release](https://github.com/pu1xar/maru/releases/latest) on your phone (package `dev.maru.app`, a `.sha256` file sits next to it) and open it
+2. On the Mac, set `MARU_DEVICE_PORT` (for example `8025`) and start an HTTPS tunnel to that port. Tailscale Serve is the recommended choice, since the address stays inside your tailnet
+3. Set `MARU_DEVICE_URL` to the tunnel's `https://` address and `MARU_DEVICE_HOSTS` to its host name, then restart maru
+4. In the web UI, open Settings, Devices, press Connect Android and scan the QR code with the app
+
+The device listener binds to `127.0.0.1`, so a plain LAN address does not work. The app reads the repository's latest release at start and once a day, and shows a Download button when a newer APK exists. The full steps, Cloudflare and ngrok alternatives, and building the APK yourself are in [docs/android.md](docs/android.md).
+
+## Desktop app
+
+The desktop app is an Electron window that opens the web UI of the server it is paired with, for macOS and Windows. This repository publishes no desktop build: you build the installers yourself and sign the update manifest with your own key.
 
 ```sh
-MARU_ORIGINS=http://localhost:5173,http://127.0.0.1:5173 pnpm dev:server
-pnpm dev:web            # http://127.0.0.1:5173
+pnpm --filter @maru/desktop start       # bundles and runs the app in development
+node apps/desktop/scripts/build.ts --out <dir> --targets mac-arm64   # installers and a signed update manifest
 ```
+
+On macOS the build uses no Apple Developer ID. It signs with a local self-signed certificate in your login Keychain, or ad hoc without one. Targets, keys and the certificate are in [docs/desktop.md](docs/desktop.md).
 
 ## Configuration
 
@@ -96,72 +249,11 @@ maru reads `~/.config/maru/config.json`. Set `MARU_CONFIG` to use another path. 
 }
 ```
 
-- `claudeAccounts[].dir` is the `CLAUDE_CONFIG_DIR` of an account, `codexAccounts[].home` is its `CODEX_HOME`
-- Without a file, or without the account fields, maru detects `~/.claude` and `~/.codex` when they exist and names them `claude` and `codex`
-- A file that is not valid JSON stops the server at startup, and the server prints the reason
-- Several accounts: give each account its own directory and sign in to each one separately
+- `claudeAccounts[].dir` is the `CLAUDE_CONFIG_DIR` of an account, `codexAccounts[].home` is its `CODEX_HOME`. Without a file, maru detects `~/.claude` and `~/.codex`
+- `claudeUsage` and `codexUsage` (both off by default) turn on the usage meters. They read the CLIs' stored login tokens and call undocumented endpoints, see [Authentication and Anthropic's terms](#authentication-and-anthropics-terms)
+- State lives in `~/.config/maru/` (`state.sqlite`, the session host socket, the shell tmux socket, the trash and uploaded attachments)
 
-  ```sh
-  CLAUDE_CONFIG_DIR=~/.claude-work claude auth login
-  ```
-
-- The Accounts page edits this file for you: Settings, Accounts
-  1. The list shows every account with its provider, folder and login status (Signed in, Not signed in, CLI not found, Unknown). An account found on disk without being in the file is marked Detected
-  2. Add account asks for the provider, an id (letters, digits, `.`, `_`, `-`; unique) and the folder (default `~/.claude-<id>` or `~/.codex-<id>`). maru writes the account to the config file, creates the folder and opens a terminal with the CLI's own sign-in (`claude auth login` or `codex login`) typed in. Finish the sign-in there, then press Refresh
-  3. Remove takes the account out of the config file only. Its folder and its login stay
-  4. The "Claude usage" and "Codex usage" switches set `claudeUsage` and `codexUsage`
-  5. The server reads its accounts at start, so an added or removed account applies after you restart maru (the page says so)
-  6. Login status comes from `claude auth status` and `codex login status`. maru never reads token files or the keychain for it, and never receives a password, token or code
-  7. The Android app shows the same list read only. Add, remove and sign in on a computer
-- `claudeBin` is the path of the Claude CLI. Without it, maru uses `claude` from the `PATH`, then `~/.local/bin/claude`
-- `claudeUsage` (default `false`) turns on the Claude usage meters, which read Claude Code's stored OAuth token and send it to Anthropic. Read [Authentication and Anthropic's terms](#authentication-and-anthropics-terms) before enabling it
-- `codexUsage` (default `false`) turns on the Codex usage meters. maru reads the login token that the Codex CLI stored (`<CODEX_HOME>/auth.json`) and sends it to OpenAI's private usage endpoint `https://chatgpt.com/backend-api/wham/usage`, with the Codex CLI's `User-Agent`. Read the Codex paragraph of [Authentication and Anthropic's terms](#authentication-and-anthropics-terms) before enabling it
-
-State lives in `~/.config/maru/`: `state.sqlite` (Groups, locks, paired devices and similar), the session host socket, the shell tmux socket, the trash and uploaded attachments. These environment variables move them or change the server's behavior.
-
-| Variable | Meaning |
-|---|---|
-| `PORT` | Web listener port (default 8024) |
-| `MARU_HOSTS` | Extra `host:port` values the web listener accepts in the `Host` header |
-| `MARU_ORIGINS` | Extra browser origins the web listener accepts |
-| `MARU_STATE` | Path of `state.sqlite` |
-| `MARU_HOST_SOCKET` | Path of the session host socket |
-| `MARU_SHELL_SOCKET` | Path of the shell tmux socket |
-| `MARU_TRASH` | Folder for deleted sessions |
-| `MARU_ATTACHMENTS` | Folder for uploaded attachments |
-| `MARU_TMUX` | Path of the tmux binary |
-| `MARU_DEVICE_PORT` | Port of the device listener (off when unset, see [Security model](#security-model)) |
-| `MARU_DEVICE_HOSTS` | Extra `Host` values the device listener accepts |
-| `MARU_DEVICE_URL` | Server URL that pairing links carry |
-| `MARU_UPDATE_TOKEN_FILE` | File that holds the OTA update token (default `~/.config/maru/mobile-update-token`). The server accepts it on the update routes, and the Android build embeds it |
-| `MARU_MOBILE_DIR` | Folder of the Android build output that the server offers for download (default `~/.local/share/maru/mobile`, APKs in `apk/`) |
-| `MARU_OTA_DIR` | Folder of the exported Android OTA update (default `apps/mobile/dist-ota`) |
-| `MARU_DESKTOP_DIR` | Folder of the desktop app build and its signed manifest (default `apps/desktop/dist-release`) |
-| `MARU_FCM_SERVICE_ACCOUNT_FILE` | Firebase service account key for push (default `~/.config/maru/firebase/service-account.json`, see `apps/mobile/FCM-SETUP.md`) |
-| `MARU_CLAUDE_USAGE_URL` | Claude usage endpoint (default `https://api.anthropic.com/api/oauth/usage`), for pointing a test instance at a stand-in |
-| `MARU_CODEX_USAGE_URL` | Codex usage endpoint (default `https://chatgpt.com/backend-api/wham/usage`), for the same purpose |
-| `USAGE_CLAUDE_RATE_CACHE_TTL` | Seconds that a Claude usage read is reused per account (default 60) |
-| `USAGE_CODEX_LIVE_CACHE_TTL` | Seconds that a Codex usage read is reused per account (default 60) |
-| `MARU_PORT` | Development only: the server port that the Vite dev server proxies to (default 8024) |
-| `MARU_CONFIG` | Path of the config file (default `~/.config/maru/config.json`) |
-
-Build and desktop variables. The web and Android builds also read them from `~/.config/maru/build.env` (see `build.env.example`; `MARU_BUILD_ENV` names another file)
-
-| Variable | Meaning |
-|---|---|
-| `MARU_ANDROID_PACKAGE` | Android application id (default `dev.maru.app`) |
-| `MARU_UPDATES_URL` | OTA manifest URL built into the APK (unset: OTA off) |
-| `MARU_UPDATES_CERT` | Certificate of the OTA signing key (default `apps/mobile/certs/certificate.pem`) |
-| `MARU_UPDATES_KEY` | Private key that signs OTA updates (default `~/.config/maru/updates-signing/private-key.pem`) |
-| `MARU_CAMERA_PERMISSION_TEXT` | Text of the Android camera permission prompt (a native resource, so a change needs a new APK) |
-| `MARU_RELEASES_REPO` | `<owner>/<repo>` whose GitHub Releases the Android app checks for a newer APK (unset: the server's notice only) |
-| `MARU_FONT_CDN` | Where the Bon Google Sans Code files are served (unset: no Bon file is downloaded) |
-| `MARU_GOOGLE_SERVICES_FILE` | `google-services.json` for push builds (default `~/.config/maru/firebase/google-services.json`) |
-| `MARU_VERSION` | Version that a build reports (default: derived from the checkout) |
-| `MARU_DESKTOP_APP_ID` | Desktop application id (default `dev.maru.desktop`) |
-| `MARU_DESKTOP_TARGETS` | Default of `--targets` of the desktop build |
-| `MARU_DESKTOP_USER_DATA` | Data folder of the desktop app instead of the OS default |
-| `MARU_DESKTOP_SHOW_INACTIVE` | The desktop app opens its window without taking focus |
+Every field, the Accounts page, and the environment variables for ports, state paths and builds are in [docs/configuration.md](docs/configuration.md).
 
 ## Authentication and Anthropic's terms
 
@@ -171,6 +263,8 @@ maru does not handle Claude logins. Each user signs in to the unmodified Claude 
 claude auth login            # a Claude subscription
 claude auth login --console  # an Anthropic Console account (API billing)
 ```
+
+### What the terms say
 
 Anthropic's [legal and compliance page](https://code.claude.com/docs/en/legal-and-compliance) says, under "Acceptable use":
 
@@ -184,7 +278,7 @@ and, in the same text, that this does
 
 > Nor does it prevent an end user from signing in to the unmodified Claude Code binary with their own Claude subscription
 
-How maru reads this
+### How maru reads this
 
 - maru is a program built on the Agent SDK, so the first sentence (API key authentication for developers) applies to maru's author and to anyone who redistributes maru as a product or service
 - maru is meant for the case of the last quote: you, an end user, sign in to the unmodified Claude Code binary with your own Claude subscription, on your own machine, and maru drives that binary
@@ -192,157 +286,58 @@ How maru reads this
   - The use is meant to be ordinary and individual: one person, one Mac, sessions that person starts
 - This is an interpretation, and the wording leaves room for another one: a tool that wraps the Agent SDK around a subscription login can be read as "building a product that interacts with Claude's capabilities", and Anthropic can change the text or enforce it without notice. Using a subscription with maru, and what follows for your account, is your decision and your responsibility
 - When you are not sure, use API billing (`claude auth login --console`, or a supported cloud provider through the CLI's own settings) instead of a subscription, or ask Anthropic ([contact sales](https://www.anthropic.com/contact-sales))
-
-```sh
-claude auth login            # a Claude subscription
-claude auth login --console  # an Anthropic Console account (API billing)
-```
-
 - Do not use maru to host sessions for other people. It is a single-user tool and it has no user accounts
+
+### API billing and the usage switches
+
 - API billing: the CLI's Console login (`claude auth login --console`) stores its credentials in the account's config directory. maru starts the CLI with a fixed, minimal environment (`HOME`, `USER`, `PATH`, `LANG`, `SHELL`, `CLAUDE_CONFIG_DIR` and a few more), so an `ANTHROPIC_API_KEY` set in the server's environment does not reach the CLI
 - `claudeUsage` reads the OAuth token that Claude Code stored (login Keychain on macOS, or `.credentials.json` in the config directory) and sends it to `https://api.anthropic.com/api/oauth/usage` to read the 5-hour and 7-day usage windows
   - The request carries `User-Agent: claude-code/<version>`, with the version of your installed CLI, so it looks like the requests Claude Code makes itself (`apps/server/src/usage/claude.ts`)
   - The endpoint is not a documented API, and the token belongs to Claude Code. The switch is off by default. Turning it on is your decision and your responsibility
 - Codex: sessions run through the Codex CLI's own app-server and its own sign-in, which maru does not read
-  - `codexUsage` is the exception. It reads the login token in `<CODEX_HOME>/auth.json` and calls OpenAI's private endpoint `https://chatgpt.com/backend-api/wham/usage` with the Codex CLI's `User-Agent`. The endpoint is not a documented API, and this README does not review OpenAI's terms for it. The switch is off by default. Turning it on is your decision and your responsibility
+  - `codexUsage` is the exception. It first asks the Codex app-server (`account/rateLimits/read`), which needs no token from maru. When no app-server answers for that home, it reads the login token in `<CODEX_HOME>/auth.json` and calls OpenAI's private endpoint `https://chatgpt.com/backend-api/wham/usage` with the Codex CLI's `User-Agent`, and after that the last rate-limit snapshot in a session rollout. The endpoint is not a documented API, and this README does not review OpenAI's terms for it. The switch is off by default. Turning it on is your decision and your responsibility
 
 ## Security model
 
-maru starts agents with permission prompts off (Claude with `bypassPermissions`, Codex with approval policy `never` and full filesystem access) and opens shells. Whoever can use the UI can run commands as your user. The web listener has no login, so that includes every process on this Mac and every other OS user of this Mac: a request without an `Origin` header (curl, a script) passes the checks below and can start a shell.
+maru starts agents with permission prompts off (Claude with `bypassPermissions`, Codex with approval policy `never` and full filesystem access) and opens shells. Whoever can use the UI can run commands as your user.
 
-- Network binding: the web listener binds to `127.0.0.1`, so other machines cannot reach it directly. On this machine the port is open to every local process and user. The `Host` and `Origin` checks stop web pages (DNS rebinding, cross-site requests), not local programs. On a Mac with several users, each of them controls your agents
-- The web listener has no login of its own. Its protections are
-  - `Host` check: a request whose `Host` header is not `127.0.0.1:<port>` or `localhost:<port>` (plus `MARU_HOSTS`) is refused with 403, which blocks DNS rebinding
-  - `Origin` check: a browser request with an `Origin` that is not in the allowed list (loopback plus `MARU_ORIGINS`) is refused for HTTP and WebSocket
-- Devices (the Android and desktop apps) connect to a second listener, the device listener, on `MARU_DEVICE_PORT` (also loopback, started only when the variable is set). Source: `apps/server/src/devices/`
-  - Pairing: in the web UI (Settings, Devices) you open a pairing dialog. It shows a one-time code (a QR code for Android, a short code or link for desktop) that is valid while the dialog is open. The app sends it to `POST /api/device/pair` and receives a device token
-  - Secrets are 256 random bits with a prefix (`maru_p_` pairing code, `maru_d_` device token, `maru_u_` update token). The server stores only their SHA-256 hashes. Pairing codes live in memory and end when the dialog closes or when a restart happens
-  - Every request and WebSocket upgrade on the device listener is checked, and a request that names an `Origin` must come from a page of the host it asks. Removing a device in the web UI closes its open sockets at once
-  - What a token reaches depends on the device kind, which the pairing code fixes. An Android token reaches an allowlist of routes (sessions, messages, rewind and fork, session management, attachments, shells, pictures). A desktop token reaches everything the web listener serves except device management. Device management exists only on the web listener
-  - The OTA update token, built into every APK, opens only the update routes
-- Session host: a unix socket in `~/.config/maru/`, mode 0600. The host runs Claude with permissions bypassed, so the socket is a command execution path for your user
-- To reach maru from outside the machine, put it behind a reverse proxy that you configure and that authenticates users first
-  - Route requests that carry `Authorization: Bearer maru_...` to the device port, and send everything else through your authentication to the web port
-  - Add the public hostname to `MARU_HOSTS` (and `MARU_DEVICE_HOSTS`) and its origin, such as `https://maru.example.com`, to `MARU_ORIGINS`. Browser requests through the proxy carry that origin, and without it they fail the `Origin` check (`apps/server/src/http/guard.ts`). Serve HTTPS. The apps accept only `https` server addresses, with `http` allowed for loopback
-  - Without your own authentication in front, anyone who can reach the web port controls the agents
+- The web listener binds to `127.0.0.1` and has no login. Every process and every OS user on this Mac can reach it. Its `Host` and `Origin` checks stop web pages (DNS rebinding, cross-site requests), not local programs
+- The Android and desktop apps use a second listener, the device listener (`MARU_DEVICE_PORT`, off by default, bound to `127.0.0.1` as well). A one-time pairing code is exchanged for a device token, and the server stores only SHA-256 hashes of both
+- The session host listens on a unix socket in `~/.config/maru/` with mode 0600, and it is a command execution path for your user
+- To reach maru from outside the machine, put it behind a reverse proxy that you configure, that serves HTTPS and that authenticates users first. Without your own authentication in front, anyone who can reach the web port controls the agents
 
-To report a vulnerability, see [SECURITY.md](SECURITY.md).
+The full model, with the pairing flow, token scopes and the reverse proxy setup, is in [docs/security.md](docs/security.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
-## Desktop app
+## Documentation
 
-The desktop app is an Electron window that opens the web UI of the server it is paired with. The server must expose the device listener (see above).
+- [Configuration](docs/configuration.md): the config file, the Accounts page and every environment variable
+- [Android app](docs/android.md): installing the APK, reaching the server from the phone, building it yourself, update signing keys
+- [Desktop app](docs/desktop.md): building, signing and pairing the Electron app
+- [Security model](docs/security.md): listeners, pairing, tokens and remote access
+- [Architecture](docs/ARCHITECTURE.md): how the server, the session host and the clients fit together
+- [Android build and release](apps/mobile/README.md) and [push notifications](apps/mobile/FCM-SETUP.md)
+
+## Development
 
 ```sh
-pnpm --filter @maru/desktop start       # bundles and runs the app in development
-node apps/desktop/scripts/build.ts --out <dir> --targets mac-arm64   # installers and a signed update manifest
-```
+pnpm typecheck          # server, web and desktop (tsc)
+pnpm test               # node --test over server, web, shared, desktop and scripts
 
-`build.ts` takes `--targets` from `mac-arm64`, `mac-x64`, `win-x64`, `win-arm64` (or `MARU_DESKTOP_TARGETS`), builds with electron-builder, and signs the update manifest.
-
-- You create the update signing key pair yourself (see [Update signing keys](#update-signing-keys)). `--key` and `--cert` of `build.ts` name another pair. The certificate is embedded in the desktop app and in the Android app, and the apps verify every update against it
-- On macOS the app is signed with a local self-signed certificate in your login Keychain, because the build uses no Apple Developer ID (see [macOS signing certificate](#macos-signing-certificate)). Without it the build signs ad hoc, and the Keychain asks for access again after each update
-- Unit tests of the app run with the root `pnpm test`
-
-### Update signing keys
-
-One RSA key pair signs the Android OTA updates and the desktop update manifest. The private key stays on your build machine, and the certificate goes into the apps. Expo's generator writes a pair that Expo Updates accepts. Run it once, after `npm ci` in `apps/mobile`
-
-```sh
 cd apps/mobile
-npx expo-updates codesigning:generate \
-  --key-output-directory ~/.config/maru/updates-signing \
-  --certificate-output-directory certs \
-  --certificate-validity-duration-years 10 \
-  --certificate-common-name maru
-chmod 600 ~/.config/maru/updates-signing/private-key.pem
+npx tsc --noEmit -p .
+node --test 'src/**/*.test.ts' 'scripts/**/*.test.mts'
 ```
 
-- It writes `~/.config/maru/updates-signing/private-key.pem` (and a `public-key.pem` that nothing here reads) and `apps/mobile/certs/certificate.pem`
-- The OTA export and the desktop build read the private key from that path by default (`MARU_UPDATES_KEY`, `--key`), and the certificate from `apps/mobile/certs/certificate.pem` (`MARU_UPDATES_CERT`, `--cert`)
-- The certificate is a native input of the Android app. A new certificate needs a new APK, and installed apps built with the old one stop taking your updates. Keep the private key safe and never commit it. `apps/mobile/certs/certificate.pem` belongs to your deployment, and each deployment makes its own
+The mobile tests compare generated bundles with the packages that `apps/web` installs, so run `pnpm install` at the root first. GitHub Actions runs the same commands on macOS (`.github/workflows/ci.yml`).
 
-### macOS signing certificate
-
-A self-signed code signing certificate named `maru Local Code Signing` in the login Keychain gives every build of the desktop app the same signing identity, so the Keychain does not ask again after each update (`LOCAL_SIGNING_NAME` in `apps/desktop/scripts/builderConfig.ts`). The build finds it by that name with `security find-identity -p codesigning`
+Development with hot reload runs two processes. The Vite dev server proxies `/api` and `/ws` to the server (`MARU_PORT` names the server port when it is not 8024).
 
 ```sh
-openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 3650 \
-  -subj "/CN=maru Local Code Signing" \
-  -addext "keyUsage=critical,digitalSignature" \
-  -addext "extendedKeyUsage=critical,codeSigning"
-openssl pkcs12 -export -legacy -inkey key.pem -in cert.pem \
-  -name "maru Local Code Signing" -out maru.p12      # asks for an export password
-security import maru.p12 -k ~/Library/Keychains/login.keychain-db -T /usr/bin/codesign
-security find-identity -p codesigning                # lists it
-rm key.pem cert.pem maru.p12
+MARU_ORIGINS=http://localhost:5173,http://127.0.0.1:5173 pnpm dev:server
+pnpm dev:web            # http://127.0.0.1:5173
 ```
 
-- `-legacy` is for OpenSSL 3 and newer (Homebrew's `openssl`): without it `security import` fails with "MAC verification failed". The `/usr/bin/openssl` of macOS (LibreSSL) does not know the flag, so leave it out there
-- `find-identity` shows the certificate as not trusted. That is expected: it is not added to the trust settings, and the build signs through the identity's hash
-
-## Android app
-
-### Install the released APK
-
-Releases of this repository carry a ready-made APK (package `dev.maru.app`, OTA updates off).
-
-1. Open the repository's Releases page on your phone and download `maru-<version>.apk` (a `.sha256` file sits next to it)
-2. Open the file. Android asks once to allow installs from that app (the browser or the file manager)
-3. Open maru and pair it with your server (below)
-
-The app reads the repository's latest release at start and once a day while it stays open. When a newer one exists, the drawer shows "maru <version> is available" with a Download button that opens the APK in the browser. A failed check is silent.
-
-### Reach your server from the phone
-
-The app takes the server address from the pairing QR code and accepts only `https` (plain `http` only for the phone's own loopback). The device listener binds to `127.0.0.1`, so a plain LAN address does not work: direct connection over the same Wi-Fi is not supported. Put an HTTPS tunnel in front of the device listener.
-
-On the server:
-
-1. Set `MARU_DEVICE_PORT` (for example `8025`) and restart the server. This opens the device listener on `127.0.0.1:<port>`
-2. Expose that port over HTTPS with one of the options below
-3. Set `MARU_DEVICE_URL` to the public address (`https://...`, no path) so the pairing QR carries it, and `MARU_DEVICE_HOSTS` to the same name as the `Host` header shows it (`name.example.com`, with `:port` only for a non-default port). Restart
-4. In the web UI on the Mac, open Settings, Devices and scan the QR code with the app
-
-The device listener allows a request only when its `Host` header is `127.0.0.1:<port>`, `localhost:<port>`, an entry of `MARU_HOSTS` or an entry of `MARU_DEVICE_HOSTS` (an exact match, `apps/server/src/devices/deviceServer.ts`). A refused request answers 403 `host not allowed: <value>`, and that value is what to add.
-
-Tailscale (recommended): reachable only from your tailnet, never from the internet.
-
-1. Install Tailscale on the Mac and the phone and sign in to the same tailnet
-2. Enable MagicDNS and HTTPS certificates in the Tailscale admin console
-3. On the Mac (syntax of Tailscale 1.52 and later; check the [Tailscale Serve docs](https://tailscale.com/kb/1242/tailscale-serve) for the current form):
-
-   ```sh
-   tailscale serve --bg --https=443 localhost:8025
-   tailscale serve status        # shows https://<machine>.<tailnet>.ts.net
-   ```
-
-4. `MARU_DEVICE_URL=https://<machine>.<tailnet>.ts.net` and `MARU_DEVICE_HOSTS=<machine>.<tailnet>.ts.net`. The app sends that name as `Host`, with no port because 443 is the default. Tailscale Serve should hand the `Host` header on to the listener; the 403 message above names the value when it does not
-5. Switch it off with `tailscale serve --https=443 localhost:8025 off`. Do not use `tailscale funnel`, which publishes the address to the internet
-
-Cloudflare quick tunnel: `cloudflared tunnel --url http://127.0.0.1:8025` prints a `https://<random>.trycloudflare.com` address. The address changes at every start, so each restart needs a new `MARU_DEVICE_URL` and `MARU_DEVICE_HOSTS` and a new pairing. The address is public on the internet; the device token is the only thing that guards it.
-
-ngrok: a free account gets one static domain. `ngrok http --url=<your-domain>.ngrok-free.app 127.0.0.1:8025` (check ngrok's current syntax). The address is public on the internet, guarded by the device token alone.
-
-The desktop app pairs with the same address: the dialog in Settings, Devices offers a short code and link for it, built from `MARU_DEVICE_URL` as well. The computer that runs it must reach the address (join the tailnet for Tailscale).
-
-### Build it yourself
-
-The Android app lives in `apps/mobile` (Expo SDK 58, a separate npm package root with its own `node_modules`). Signing keys, build settings and the release workflow are in `apps/mobile/README.md`.
-
-```sh
-cd apps/mobile
-npm ci
-scripts/build-apk.sh                     # builds a release APK with Gradle, no EAS
-```
-
-`build-apk.sh` runs `expo prebuild` in a build folder outside the repository, then `gradlew assembleRelease`, and writes the APK under `~/.local/share/maru/mobile/apk/`, where the server offers it for download. It needs `JAVA_HOME` (default: the JBR inside Android Studio) and `ANDROID_HOME`.
-
-- Keys you create yourself (the commands are in `apps/mobile/README.md`)
-  - The Android signing keystore (`keystore.properties` and a PKCS12 keystore, default folder `~/.config/maru/android/`)
-  - The OTA update signing key pair (see [Update signing keys](#update-signing-keys)). JavaScript changes reach installed apps as signed OTA updates that the server serves
-  - The OTA read token, which `build-apk.sh` creates once in `~/.config/maru/mobile-update-token`
-- Build settings (package name `MARU_ANDROID_PACKAGE`, default `dev.maru.app`, the update URL `MARU_UPDATES_URL` and others) can be set in `~/.config/maru/build.env`. See `apps/mobile/README.md` and `build.env.example`
-- Push notifications are optional and need a Firebase project (`apps/mobile/FCM-SETUP.md`)
+The screenshots in `docs/assets` are made by `node scripts/screenshots/capture.mjs` after `pnpm build:web`. It starts an isolated maru on a scratch home folder with made-up sessions, stand-in CLIs and a stand-in Codex daemon, and drives headless Chromium. The header of the script lists its options.
 
 ## Project layout
 
@@ -359,25 +354,14 @@ apps/web          React and Vite web UI
 apps/desktop      Electron app and its build scripts
 apps/mobile       Expo Android app (own npm package root)
 packages/shared   types and pure helpers shared by all of the above
-scripts           version and host maintenance scripts
-docs              architecture notes
+scripts           version, host maintenance, performance and screenshot scripts
+docs              user guides, architecture notes and README images
 patches           pnpm patches for two npm packages
 ```
 
-The architecture is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Contributing
 
-## Development
-
-```sh
-pnpm typecheck          # server, web and desktop (tsc)
-pnpm test               # node --test over server, web, shared, desktop and scripts
-
-cd apps/mobile
-npx tsc --noEmit -p .
-node --test 'src/**/*.test.ts' 'scripts/**/*.test.mts'
-```
-
-The mobile tests compare generated bundles with the packages that `apps/web` installs, so run `pnpm install` at the root first. GitHub Actions runs the same commands on macOS (`.github/workflows/ci.yml`). See [CONTRIBUTING.md](CONTRIBUTING.md).
+maru is a personal project and pull requests are reviewed when there is time. Open an issue first, keep a pull request small, and run the checks above. [CONTRIBUTING.md](CONTRIBUTING.md) has the details.
 
 ## License
 

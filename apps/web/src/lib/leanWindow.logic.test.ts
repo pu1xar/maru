@@ -95,3 +95,12 @@ test("sizes: kept per session, tiny or malformed values are ignored", () => {
   assert.deepEqual(parseLeanSizes(null), {});
   assert.deepEqual(parseLeanSizes(JSON.stringify({ a: { w: 10, h: 10 }, b: "x", c: { w: 400, h: 400 } })), { c: { w: 400, h: 400 } });
 });
+
+test("closesLeanWindow: only a session now in a pane closes the window", async () => {
+  const { closesLeanWindow, SESSION_DRAG_TYPE } = await import("./leanWindow.logic.ts");
+  assert.equal(closesLeanWindow("placed"), true);
+  assert.equal(closesLeanWindow("focused"), true);
+  assert.equal(closesLeanWindow("noRoom"), false);
+  assert.equal(closesLeanWindow("none"), false);
+  assert.equal(SESSION_DRAG_TYPE, "application/x-maru-session");
+});

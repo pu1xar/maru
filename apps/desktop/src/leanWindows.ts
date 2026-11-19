@@ -18,6 +18,8 @@ export interface LeanWindowsOptions {
   /** The main window's link rules and context menu apply to a lean window too. */
   guard: (wc: Electron.WebContents) => void;
   contextMenu: (win: BrowserWindow, params: Electron.ContextMenuParams) => void;
+  /** A window opened: follows its moves (splitDrag.ts); returns what to call when it closes. */
+  track?: (win: BrowserWindow) => () => void;
   /** The list of open windows changed. */
   onChange: () => void;
   log: (line: string) => void;
@@ -46,6 +48,12 @@ export class LeanWindows {
   ofFrame(frame: WebFrameMain | null): Entry | null {
     if (!frame) return null;
     for (const e of this.entries.values()) if (!e.win.isDestroyed() && e.win.webContents.mainFrame === frame) return e;
+    return null;
+  }
+
+  /** The session key of a lean window. */
+  keyOf(win: BrowserWindow): string | null {
+    for (const e of this.entries.values()) if (e.win === win) return e.key;
     return null;
   }
 
@@ -94,11 +102,13 @@ export class LeanWindows {
       if (entry.saveTimer) clearTimeout(entry.saveTimer);
       entry.saveTimer = setTimeout(() => this.saveNow(entry), SAVE_DELAY_MS);
     };
+    const untrack = this.opts.track?.(win);
     win.on("resize", save);
     win.on("move", save);
     win.on("close", () => this.saveNow(entry));
     win.on("closed", () => {
       if (entry.saveTimer) clearTimeout(entry.saveTimer);
+      untrack?.();
       this.entries.delete(id);
       this.opts.onChange();
     });

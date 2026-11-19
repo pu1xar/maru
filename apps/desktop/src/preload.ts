@@ -9,7 +9,7 @@
 //   <html data-desktop-fullscreen>        full screen: no traffic lights, no space for them
 //   maru:chrome                           the page's top bar height in window points and its theme
 import { contextBridge, ipcRenderer, webFrame, type IpcRendererEvent } from "electron";
-import type { DesktopLeanWindow, DesktopUpdateState, MaruDesktopBridge } from "@maru/shared";
+import type { DesktopLeanWindow, DesktopSplitDrag, DesktopUpdateState, MaruDesktopBridge } from "@maru/shared";
 import { barHeightAt } from "./chrome.ts";
 
 const version = process.argv.find((a) => a.startsWith("--maru-version="))?.slice("--maru-version=".length) ?? "unknown";
@@ -106,6 +106,11 @@ if (location.protocol === "maru-app:") {
     focusLeanWindow: (key: string) => ipcRenderer.invoke("maru:lean-focus", String(key)),
     getLeanWindows: () => ipcRenderer.invoke("maru:lean-windows"),
     onLeanWindows: (listener: (windows: DesktopLeanWindow[]) => void) => subscribe<DesktopLeanWindow[]>("maru:lean-windows", listener),
+    onSplitDrag: (listener: (drag: DesktopSplitDrag | null) => void) =>
+      subscribe<DesktopSplitDrag | null>("maru:split-drag", (d) => listener(d)),
+    onSplitDrop: (listener: (drop: DesktopSplitDrag & { id: string }) => void) =>
+      subscribe<DesktopSplitDrag & { id: string }>("maru:split-drop", listener),
+    replySplitDrop: (id: string, outcome: string) => ipcRenderer.invoke("maru:split-drop-result", String(id), String(outcome)),
     getKeepOnTop: () => ipcRenderer.invoke("maru:keep-on-top"),
     setKeepOnTop: (on: boolean) => ipcRenderer.invoke("maru:set-keep-on-top", on === true),
     copyText: (text: string) => ipcRenderer.invoke("maru:copy-text", String(text)),

@@ -16,7 +16,8 @@ import { ToastProvider } from "./components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./components/ui/tooltip";
 import { desktopBridge } from "./lib/desktopBridge";
 import { GroupNamesContext } from "./lib/groupNames";
-import { announceLeanWindow, rememberOwnSize } from "./lib/leanWindow";
+import { announceLeanDrag, announceLeanWindow, rememberOwnSize } from "./lib/leanWindow";
+import { SESSION_DRAG_TYPE } from "./lib/leanWindow.logic";
 import { isBareSessionId, keyForSessionId } from "./lib/sessionUrl";
 import { socketHub } from "./lib/socket";
 import { displayName } from "./model";
@@ -82,6 +83,22 @@ export function LeanApp() {
               <ThreadView
                 key={session.key}
                 session={session}
+                // A browser's popup is put back into a tab's split view by dragging its header onto
+                // that tab (HTML5 drag, ExternalSessionDrop). The desktop app's header is the window's
+                // drag region: moving the window over the main window does it (main process).
+                headerDrag={
+                  desktopBridge()
+                    ? undefined
+                    : {
+                        title: "Drag onto a maru tab to move it into the split view",
+                        onDragStart: (e) => {
+                          e.dataTransfer.setData(SESSION_DRAG_TYPE, session.key);
+                          e.dataTransfer.effectAllowed = "move";
+                          announceLeanDrag(session.key);
+                        },
+                        onDragEnd: () => announceLeanDrag(null),
+                      }
+                }
                 headerActions={
                   <div className="-me-[calc(var(--workspace-gutter-end)-var(--workspace-controls-right)-1px)] flex shrink-0 items-center gap-0.5">
                     {session.owner === "ui" && session.status !== "running" && session.status !== "waiting-input" && !session.backgroundTasks ? (

@@ -434,6 +434,50 @@ export function openSession(layout: PaneLayout, sessionKey: string, newId: NewId
   return assignSession(layout, focused.id, sessionKey);
 }
 
+/** What a drop of a session from outside the page's drag (a lean window) did. */
+export type PlaceOutcome = "focused" | "placed" | "noRoom" | "none";
+
+/** A drop target under a point: where it lands with its preview, an edge with no room (`noRoom`), or nothing. */
+export interface DropHit {
+  target: { paneId: string | null; zone: DropZone } | null;
+  preview: Rect | null;
+  /** The pane under the point when it is at an edge that has no room for another pane. */
+  noRoom: Rect | null;
+}
+
+function insideRect(r: Rect, x: number, y: number): boolean {
+  return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+}
+
+/**
+ * What a point (in the split view's own pixels) is over, for a session coming from outside the
+ * page's drag (a lean window, DESIGN.md 6x): the same zones, room check and preview a sidebar row
+ * dragged over a pane gets. The empty view is one target (the whole area). `frames` is the
+ * layout's frames at `whole`'s size; null when the area is not known.
+ */
+export function dropHitAt(
+  layout: PaneLayout,
+  frames: Frames | null,
+  whole: Rect | null,
+  x: number,
+  y: number,
+  opts: FrameOptions,
+): DropHit | null {
+  if (layout.root === null) {
+    return whole && insideRect(whole, x, y) ? { target: { paneId: null, zone: "center" }, preview: whole, noRoom: null } : null;
+  }
+  if (!frames) return null;
+  let hit: [string, Rect] | null = null;
+  for (const [id, r] of frames.panes) if (insideRect(r, x, y)) hit = [id, r];
+  if (!hit) return null;
+  const [paneId, r] = hit;
+  const zone = dropZoneAt(r, x, y, (edge) => canInsertAt(layout, frames, paneId, edge, opts));
+  if (!zone) return pointerZoneAt(r, x, y) ? { target: null, preview: null, noRoom: r } : null;
+  if (zone === "center") return { target: { paneId, zone }, preview: r, noRoom: null };
+  const preview = insertPreview(layout, frames, paneId, zone, opts);
+  return preview ? { target: { paneId, zone }, preview, noRoom: null } : null;
+}
+
 /**
  * Opens a shell in a pane of its own (the terminal screen's "분할 보기에 열기"): the pane that
  * already shows it takes focus; an empty view gets it as the first pane; an empty focused pane

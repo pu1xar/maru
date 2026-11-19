@@ -10,7 +10,7 @@ Please report vulnerabilities privately through GitHub private vulnerability rep
 
 ## Security model in short
 
-maru runs coding agents with permission prompts off and opens shells, so anyone who can use its UI can run commands as the user that runs the server. The model that follows from this is documented in the [Security model](README.md#security-model) section of the README. In short:
+maru runs coding agents with permission prompts off and opens shells, so anyone who can use its UI can run commands as the user that runs the server. The model that follows from this is documented in [docs/security.md](docs/security.md), with a summary in the [Security model](README.md#security-model) section of the README. In short:
 
 - The web listener binds to `127.0.0.1` only. It has no login of its own, and it checks the `Host` header (DNS rebinding) and the browser `Origin` (other pages in the same browser)
 - The Android and desktop apps connect to a separate device listener (`MARU_DEVICE_PORT`, off by default, also loopback). A one-time pairing code, valid while the pairing dialog is open, is exchanged for a device token. The server stores only SHA-256 hashes of codes and tokens. A device's kind decides which routes its token reaches, and device management is available on the web listener only

@@ -8,6 +8,7 @@ import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore, typ
 import type { SessionSummary } from "@maru/shared";
 
 import { AreaZoomScope } from "./components/AreaZoomIndicator.tsx";
+import { ExternalSessionDrop } from "./components/ExternalSessionDrop.tsx";
 import { LeanDragOut } from "./components/LeanDragOut.tsx";
 import { SessionDetail } from "./components/SessionDetail.tsx";
 import { SessionSidebar } from "./components/SessionSidebar.tsx";
@@ -347,6 +348,8 @@ export function App() {
         )}
         {/* A session let go outside the window opens its lean window (DESIGN.md 6x). */}
         <LeanDragOut />
+        {/* A lean window let go on the page goes back into the split view (DESIGN.md 6x). */}
+        <ExternalSessionDrop />
         </WorkspaceDndContext>
         {/* Last in the DOM, though it sits top left: the desktop app's window takes the top bars'
             drag and no-drag rectangles in document order, a later one over an earlier one, so the

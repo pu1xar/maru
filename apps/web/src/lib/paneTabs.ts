@@ -17,13 +17,17 @@ import {
   openShellPane,
   paneKind,
   panesOf,
+  computeFrames,
+  dropHitAt,
   parseLayout,
   parseLayoutBody,
   reconcileSessions,
   reconcileShells,
   closeShellPane,
   type DropZone,
+  type FrameOptions,
   type NewId,
+  type PlaceOutcome,
   type PaneLayout,
   type PaneLeaf,
 } from "./paneLayout.ts";
@@ -169,6 +173,32 @@ export function openSessionInTabs(t: PaneTabs, sessionKey: string, newId?: NewId
   const at = tabOfSession(t, sessionKey);
   if (!at) return updateActiveLayout(t, (l) => openSession(l, sessionKey, newId));
   return selectTab(updateTab(t, at.tab.id, (l) => focusPane(l, at.pane.id)), at.tab.id);
+}
+
+/**
+ * A session let go on the split view from a lean window (DESIGN.md 6x), at `point` in the area's
+ * own pixels (`size` is the shown tab's area). The tab that already shows it comes up with its
+ * pane focused, wherever the point is. Otherwise it lands as a sidebar row dropped there does
+ * (`dropSessionInTabs`): an edge shares the line equally, the middle replaces that pane's session,
+ * the empty view takes it as its first pane. An edge with no room is "noRoom" and a point that is
+ * over no pane is "none"; both return the same tabs value.
+ */
+export function placeSessionAt(
+  t: PaneTabs,
+  sessionKey: string,
+  point: { x: number; y: number },
+  size: { w: number; h: number } | null,
+  opts: FrameOptions,
+  newId?: NewId,
+): { tabs: PaneTabs; outcome: PlaceOutcome } {
+  if (tabOfSession(t, sessionKey)) return { tabs: openSessionInTabs(t, sessionKey, newId), outcome: "focused" };
+  const layout = activeLayout(t);
+  const whole = size ? { x: 0, y: 0, w: size.w, h: size.h } : null;
+  const frames = size && layout.root !== null ? computeFrames(layout.root, size.w, size.h, opts) : null;
+  const hit = dropHitAt(layout, frames, whole, point.x, point.y, opts);
+  if (!hit) return { tabs: t, outcome: "none" };
+  if (!hit.target) return { tabs: t, outcome: "noRoom" };
+  return { tabs: dropSessionInTabs(t, sessionKey, hit.target.paneId, hit.target.zone, newId), outcome: "placed" };
 }
 
 /**
