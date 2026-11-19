@@ -1,0 +1,23 @@
+{
+  "name": "@maru/desktop",
+  "productName": "maru",
+  "description": "maru desktop app",
+  "author": "pu1xar",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "bundle": "node scripts/bundle.ts",
+    "start": "node scripts/bundle.ts && electron .",
+    "dist": "node scripts/build.ts",
+    "typecheck": "tsc -p .",
+    "test": "node --test 'src/**/*.test.ts' 'scripts/**/*.test.ts'"
+  },
+  "devDependencies": {
+    "@maru/shared": "workspace:*",
+    "@types/node": "^26.0.0",
+    "electron": "44.10.1",
+    "electron-builder": "26.16.1",
+    "vite": "^8.0.0"
+  }
+}

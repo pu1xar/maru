@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#000000" />
+    <script>
+      // The theme before the first paint, as T3 Code's boot script does (src/lib/theme.ts owns it
+      // once the app starts; theme.test.ts checks this script against it). The colors are the
+      // stylesheet's page backgrounds (index.css --background), for the moment before it loads.
+      (() => {
+        let dark = true;
+        try {
+          const raw = window.localStorage.getItem("maru_theme");
+          const pref = raw === null ? null : JSON.parse(raw);
+          dark = pref === "light" ? false : pref === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : true;
+        } catch {}
+        const color = dark ? "#000000" : "#fcfcfc";
+        document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.style.backgroundColor = color;
+        for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.setAttribute("content", color);
+      })();
+    </script>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16" />
+    <title>maru</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

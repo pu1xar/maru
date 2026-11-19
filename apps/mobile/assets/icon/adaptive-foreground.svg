@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">
+  <!-- Android adaptive icon foreground (108dp canvas as 432 units): the maru line mark (DESIGN.md 7c,
+       the web's MaruMark and favicon) in the dark theme's text color, inside the 66dp safe zone (84 to 348). The background
+       color is app.config.ts adaptiveIcon.backgroundColor. adaptive-foreground.png renders this at 1024. -->
+  <g fill="none" stroke="#f5f5f5" stroke-width="14" stroke-linecap="butt" stroke-linejoin="miter"><path d="M145 250V145H304"/><path d="M287 182V287H128"/><path d="M170 216H262"/><path d="M216 162V270"/></g>
+</svg>

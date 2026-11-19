@@ -1,0 +1,40 @@
+/*
+ * Theme tokens of the dashboard's usage chart (DESIGN.md 6j): one color per account, in the order
+ * the server lists the accounts (lib/dashboardModel.ts seriesSlots), so an account keeps its color
+ * when another one is hidden. The values are the dataviz reference categorical palette, light and
+ * dark steps, checked with its validator against this app's surfaces (2026-11-16):
+ *   dark  on #0a0a0a: every check passes (worst adjacent CVD dE 8.4, normal-vision dE 19.3, all >= 3:1)
+ *   light on #ffffff: passes, with slots 3, 4, 5 under 3:1 contrast; the chart keeps its legend and
+ *                     the account rows above it carry the current values
+ * The grid and axis take the app's border and muted text tokens.
+ */
+:root {
+  --dashboard-series-1: #2a78d6;
+  --dashboard-series-2: #eb6834;
+  --dashboard-series-3: #1baf7a;
+  --dashboard-series-4: #eda100;
+  --dashboard-series-5: #e87ba4;
+  --dashboard-series-6: #008300;
+  --dashboard-series-7: #6250d6;
+  --dashboard-series-8: #e34948;
+}
+
+:root.dark,
+.dark {
+  --dashboard-series-1: #3987e5;
+  --dashboard-series-2: #d95926;
+  --dashboard-series-3: #199e70;
+  --dashboard-series-4: #c98500;
+  --dashboard-series-5: #d55181;
+  --dashboard-series-6: #0ca30c;
+  --dashboard-series-7: #9085e9;
+  --dashboard-series-8: #e66767;
+}
+
+/* The conversation's composer inside an attention card (AttentionSection.tsx): the card is its
+   surface and gives its padding. Unlayered, so it wins over the lane's component and utility rules. */
+[data-dashboard-composer] .chat-composer-lane {
+  background: transparent;
+  padding-inline: 0;
+  padding-bottom: 0;
+}

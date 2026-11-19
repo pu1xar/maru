@@ -1,0 +1,34 @@
+{
+  "name": "maru",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "dev:server": "node --watch apps/server/src/main.ts",
+    "dev:web": "pnpm --filter @maru/web dev",
+    "build:web": "pnpm --filter @maru/web build",
+    "start": "node apps/server/src/main.ts",
+    "host": "node apps/server/src/host/main.ts",
+    "host:drain": "node scripts/host-drain.ts",
+    "host:fingerprint": "node scripts/host-fingerprint.ts",
+    "test": "node --test 'apps/server/src/**/*.test.ts' 'apps/web/src/**/*.test.ts' 'packages/shared/src/**/*.test.ts' 'apps/desktop/src/**/*.test.ts' 'apps/desktop/scripts/**/*.test.ts' 'scripts/**/*.test.ts'",
+    "typecheck": "tsc -p apps/server && pnpm --filter @maru/web typecheck && tsc -p apps/desktop"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^7.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "micromark": "4.0.2",
+      "mdast-util-to-hast": "13.2.1"
+    },
+    "patchedDependencies": {
+      "micromark@4.0.2": "patches/micromark@4.0.2.patch",
+      "mdast-util-to-hast@13.2.1": "patches/mdast-util-to-hast@13.2.1.patch"
+    }
+  }
+}

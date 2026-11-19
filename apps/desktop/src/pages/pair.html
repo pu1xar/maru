@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>maru</title>
+    <link rel="stylesheet" href="shell.css" />
+  </head>
+  <body>
+    <div class="titlebar" data-titlebar></div>
+    <main>
+      <img class="mark" src="mark.svg" alt="" />
+      <h1>Connect maru</h1>
+      <p class="lead">
+        In the maru web app, open Settings, Devices and choose Connect desktop. Paste the link from that window, or enter the server address and the 12-character code, then press Connect
+      </p>
+      <p id="notice" class="muted" hidden></p>
+      <form id="form" autocomplete="off">
+        <label>
+          Server address
+          <input id="server" placeholder="https://maru.example.com" spellcheck="false" />
+        </label>
+        <label>
+          Code
+          <input id="code" placeholder="XXXX-XXXX-XXXX or a maru://pair link" spellcheck="false" />
+        </label>
+        <div class="row">
+          <button id="connect" type="submit">Connect</button>
+        </div>
+      </form>
+      <p id="error" class="error" role="alert"></p>
+    </main>
+    <footer id="version"></footer>
+    <script src="pair.js"></script>
+  </body>
+</html>

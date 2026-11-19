@@ -1,0 +1,145 @@
+/* The desktop app's local screens (pairing, offline), in the web's colors (apps/web/src/index.css). */
+:root {
+  color-scheme: light dark;
+  --background: #fcfcfc;
+  --card: #ffffff;
+  --foreground: #18181b;
+  --muted: #71717a;
+  --border: #e4e4e7;
+  --primary: oklch(0.488 0.217 264);
+  --danger: #dc2626;
+  --input: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000;
+    --card: #0a0a0a;
+    --foreground: #f1f3f7;
+    --muted: #a3a3a3;
+    --border: rgb(255 255 255 / 10%);
+    --primary: oklch(0.571 0.21 264);
+    --danger: #f87171;
+    --input: #111111;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--background);
+  color: var(--foreground);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.mark {
+  width: 40px;
+  height: 40px;
+}
+h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+p {
+  margin: 0;
+}
+.lead,
+.muted {
+  color: var(--muted);
+}
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input);
+  color: var(--foreground);
+  font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+}
+.row {
+  display: flex;
+  gap: 8px;
+}
+button {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--foreground);
+  font-weight: 500;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.error {
+  color: var(--danger);
+  min-height: 1.5em;
+  white-space: pre-wrap;
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
+}
+footer {
+  position: fixed;
+  bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+[hidden] {
+  display: none !important;
+}
+/* The window's top bar (no title bar of its own, DESIGN.md 2e): drags the window and leaves the
+   traffic lights or the Windows buttons a 44px strip, as tall as the web's top bar. */
+.titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  -webkit-app-region: drag;
+}

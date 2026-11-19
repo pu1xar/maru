@@ -1,0 +1,5 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  # The Android app is its own npm package root with its own node_modules (DESIGN.md 2d).
+  - "!apps/mobile"

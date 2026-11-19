@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>maru</title>
+    <link rel="stylesheet" href="shell.css" />
+  </head>
+  <body>
+    <div class="titlebar" data-titlebar></div>
+    <main>
+      <img class="mark" src="mark.svg" alt="" />
+      <h1>Cannot reach the server</h1>
+      <p class="mono" id="server"></p>
+      <p class="error" id="error"></p>
+      <p class="muted" id="retry"></p>
+      <div class="row">
+        <button id="now" type="button">Retry now</button>
+        <button id="reset" class="secondary" type="button">Disconnect and reconnect</button>
+      </div>
+    </main>
+    <footer id="version"></footer>
+    <script src="offline.js"></script>
+  </body>
+</html>

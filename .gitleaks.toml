@@ -1,0 +1,19 @@
+# gitleaks configuration: the default rules plus allowlists for known false positives.
+# Each allowlist names one file and the rules that fire there, so anything else in that file
+# (or the same rule elsewhere) is still reported.
+[extend]
+useDefault = true
+
+# Fake secret values used as test input
+[[allowlists]]
+description = "fake credentials in the rollout projection test"
+condition = "AND"
+paths = ['''^apps/server/src/codex/projection/rolloutItems\.test\.ts$''']
+targetRules = ["aws-access-token", "curl-auth-header", "generic-api-key"]
+
+# Minified xterm.js source embedded as a string; the matches are identifiers, not keys
+[[allowlists]]
+description = "bundled xterm code"
+condition = "AND"
+paths = ['''^apps/mobile/src/shell/xtermBundle\.generated\.ts$''']
+targetRules = ["generic-api-key"]

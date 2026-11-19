@@ -1,0 +1,2808 @@
+/* Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT License, Copyright (c) 2026 T3 Tools Inc. */
+@layer theme, base, components, utilities;
+@import "tailwindcss";
+/* The base colors of both themes, generated from packages/shared/src/themeColors.ts (DESIGN.md 7d). */
+@import "./theme-colors.generated.css";
+
+@custom-variant dark (&:is(.dark, .dark *));
+@custom-variant light (&:not(.dark, .dark *));
+
+/* Secondary hovering pointers reveal sidebar actions on touch-primary devices. */
+@custom-variant any-hover {
+  @media (any-hover: hover) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+:root {
+  --app-scrollbar-width: 6px;
+  --appearance-contrast-base: 100%;
+  --appearance-contrast-boost: 0%;
+  --appearance-contrast-border-boost: 0%;
+  --appearance-contrast-target: black;
+  --app-scrollbar-thumb: rgb(217 217 217);
+  --app-scrollbar-thumb-hover: rgb(191 191 191);
+  /*
+   * Compact UI geometry. Keep these values semantic so sidebar, palette,
+   * tooltip, and toolbar controls cannot quietly drift apart.
+   */
+  --control-radius: 0.5rem;
+  --sidebar-content-inset: 0.5rem;
+  --sidebar-control-gap: 0.5rem;
+  --sidebar-icon-color: color-mix(
+    in srgb,
+    var(--contrast-sidebar-muted-foreground) 85%,
+    var(--sidebar)
+  );
+  --sidebar-row-content-inset: 0.625rem;
+  --command-shell-inset: 0.5rem;
+  --command-content-inset: 1rem;
+  --floating-content-inset: 0.75rem;
+  /* App layer order: the bottom terminal drawer (45, above the timeline minimap),
+     docked sheets, then the floating preview player (47–49, see
+     previewMiniPlayerLayout.ts), then dialogs and popovers (50 and up). */
+  --z-sheet: 46;
+  --glass-blur: 12px;
+  --glass-opacity: var(--theme-glass-opacity);
+  --glass-saturation: 1.14;
+  --desktop-window-right-resize-inset: 0px;
+  /* 44px at the default root size: the conversation header's two 20px lines (title, meta) and 2px
+     around them (user request 2026-11-17, from T3's 52px). Local change: T3 gives it in px; rem
+     lets the UI scale (lib/displayPrefs.ts) grow the top bars with the text they hold. */
+  --workspace-topbar-height: 2.75rem;
+  --workspace-controls-top: 0px;
+  --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
+  --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
+  --workspace-native-controls-inset: 0px;
+  --workspace-titlebar-control-size: 1.75rem;
+  --workspace-titlebar-control-gap: 0.75rem;
+  --workspace-titlebar-scroll-fade-height: 1.5rem;
+  --chat-content-max-width: 46rem;
+  --thread-details-panel-width: 17.5rem;
+  /* The prompt on phones: iOS zooms into any input under 16px on focus. */
+  --font-size-prompt-touch: max(var(--font-size-prompt, 1rem), 16px);
+  /* Horizontal gutter shared by the page header and the chat column, clear of
+     the device's safe area. */
+  --workspace-gutter: 0.75rem;
+  --workspace-gutter-start: calc(env(safe-area-inset-left) + var(--workspace-gutter));
+  --workspace-gutter-end: calc(env(safe-area-inset-right) + var(--workspace-gutter));
+
+  @variant sm {
+    --workspace-gutter: 1.25rem;
+  }
+}
+
+/* Local change: a dark scope is any element with the dark class, not only the root, as the dark:
+   variant already reads it (.dark *). The root carries it in the dark theme (lib/theme.ts); the
+   terminal mode carries it always (DESIGN.md 6i), so its scrollbars and the app text inside it
+   (loading and error states) stay dark in the light theme. A scope takes these values, the core
+   token set and the contrast tokens below; the logo, diff icon, chat code and --syntax-* tokens
+   follow the root's theme. T3 nests these under :root. */
+.dark {
+  --appearance-contrast-target: white;
+  --app-scrollbar-thumb: rgb(255 255 255 / 8%);
+  --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
+  --glass-blur: 16px;
+  --glass-saturation: 1.08;
+}
+
+/* The desktop app's window (DESIGN.md 2e). Its preload marks the root `data-desktop` (mac, win,
+   linux), and on a Mac sets --desktop-window-controls-inset; in a browser none of this applies. */
+
+/* Mac: the traffic lights sit in the top bar, so the bar's first control starts after them, as
+   T3's AppSidebarLayout does (MACOS_TRAFFIC_LIGHTS_LEFT_INSET). Full screen hides them. The
+   floating sidebar toggle, the sidebar's mark and a collapsed sidebar's page header all start
+   from --workspace-controls-left. */
+html[data-desktop="mac"]:not([data-desktop-fullscreen]) {
+  --workspace-controls-left: var(--desktop-window-controls-inset, 90px);
+}
+
+/* Windows: minimize, maximize and close are drawn over the top bar's right end (titleBarOverlay);
+   env(titlebar-area-*) gives where they are, and the bar's last control ends before them (T3 .wco). */
+html[data-desktop="win"] {
+  --workspace-controls-right: calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem);
+}
+
+/* The top bars (`data-titlebar`) move the window, their controls stay clickable (T3 .drag-region).
+   Electron 44 inherits app-region, so children reset to `initial`, which adds no rectangle of its
+   own; an explicit `none` would act as no-drag and break dragging on the bar's text. */
+html[data-desktop] [data-titlebar] {
+  -webkit-app-region: drag;
+}
+@layer base {
+  html[data-desktop] [data-titlebar] > * {
+    -webkit-app-region: initial;
+  }
+}
+html[data-desktop] [data-titlebar] :is(button, a, input, textarea, select, [role="button"], [role="tab"], [role="link"], [tabindex]:not([tabindex="-1"])) {
+  -webkit-app-region: no-drag;
+}
+/* A split view pane's header is the pane's drag handle (SplitWorkspace useHeaderActivator, user
+   request 2026-11-19): a drag there rearranges panes, so it is not a window drag region. An app
+   region swallows the mouse events dnd-kit needs. The selector outweighs the rule above; the tab
+   strip over the panes and the sidebar header stay drag regions. */
+html[data-desktop] [data-pane-column] > [data-titlebar] {
+  -webkit-app-region: no-drag;
+}
+/* The floating sidebar toggle (App.tsx SidebarControl) sits over the top bars but outside them.
+   Electron takes the drag and no-drag rectangles in document order (a drag rectangle adds, a
+   no-drag one cuts, a later one over an earlier one) whatever is painted on top, so the toggle is a
+   no-drag rectangle of its own and comes last in the DOM. */
+html[data-desktop] [data-sidebar-control] :is(button, [role="button"]) {
+  -webkit-app-region: no-drag;
+}
+
+/* The window backdrop (lib/desktopBackdrop.ts), by tokens rather than element by element (user
+   request 2026-11-16: per-element rules missed every new surface, the split view's tab strip last).
+   - The left sidebar (.bg-sidebar outside the inset) is see-through at --desktop-backdrop-opacity.
+   - With "all", the conversation side (the sidebar inset) paints the one see-through layer, and
+     inside it the canvas color is transparent: every element that paints the page background (a
+     split pane, the tab strip, the composer lane, any later page) lets that layer show instead of
+     stacking a second one. The side surfaces (the settings menu's --sidebar, the right panel's
+     --side-surface) become a faint tint over it. The composer box (level 2) and the user's bubble
+     (level 1 under --surface-veil) need no rule here: each is a see-through level whatever lies under.
+   - The colors computed at the root (code blocks, contrast-adjusted text) keep the page's real
+     background, as does --backdrop-canvas, read on the root before the inset changes the token. */
+html[data-desktop-backdrop] {
+  --backdrop-canvas: var(--background);
+}
+html[data-desktop-backdrop],
+html[data-desktop-backdrop] body {
+  background-color: transparent;
+}
+html[data-desktop-backdrop] .bg-sidebar {
+  background-color: color-mix(in srgb, var(--sidebar) var(--desktop-backdrop-opacity, 100%), transparent);
+}
+html[data-desktop-backdrop="all"] [data-slot="sidebar-inset"] {
+  background-color: color-mix(in srgb, var(--backdrop-canvas) var(--desktop-backdrop-opacity, 100%), transparent);
+  --background: transparent;
+  --sidebar: color-mix(in srgb, var(--foreground) 4%, transparent);
+  --side-surface: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+html[data-desktop-backdrop="all"] [data-slot="sidebar-inset"] .bg-sidebar {
+  background-color: var(--sidebar);
+}
+/* The split view draws its pane borders as the gray behind gapped panes (bg-border); over the
+   see-through layer that gray showed through every transparent pane (measured #242525 against the
+   tab strip's #111212), so the gray goes and each pane draws the line in the 1px gap to its right
+   and below. Only those two sides: a line on all four sides doubled the tab strip's bottom border
+   and the sidebar's edge into a 2px band (user report 2026-11-17). Dividers on the see-through
+   layer are the theme's translucent border, so they read as a faint light line over the material
+   (an opaque #141414 read as a black band there). */
+html[data-desktop-backdrop="all"] [data-split-view] {
+  background-color: transparent;
+}
+html[data-desktop-backdrop="all"] [data-split-view] > [data-page-surface] {
+  box-shadow:
+    1px 0 0 0 var(--sidebar-divider),
+    0 1px 0 0 var(--sidebar-divider);
+}
+
+/* The bar across the top of a page (components/PageHeader.tsx: the tab strip over the split view
+   and the shell screen, Settings, the Dashboard; DESIGN.md 6k) is 70% of the 2.75rem top bar at the default sidebar scale (90%), and follows the sidebar's
+   scale: 2.14rem x 0.9 = 1.93rem, 30.8px at the default root size. --sidebar-zoom is set on the
+   sidebar wrapper by App.tsx. The strip's own text, buttons and spacing take the same scale through
+   data-area-zoom. Where the window controls overlay the bar (.wco) it keeps the controls' height. */
+[data-slot="sidebar-wrapper"] {
+  --page-header-height: calc(2.14rem * var(--sidebar-zoom, 1));
+}
+.wco [data-slot="sidebar-wrapper"] {
+  --page-header-height: var(--workspace-topbar-height);
+}
+/* The floating sidebar toggle is centred in the bar it floats over. Over the sidebar's header (the
+   sidebar open on a wide window) that is the 2.75rem top bar, as before; over a page header (the
+   sidebar collapsed, or a phone-width window) it takes the header's height, and its button is at
+   most 6px shorter than the header (28px at most). The room the header's first piece keeps for the
+   toggle (--workspace-titlebar-content-left) stays as it is. */
+[data-slot="sidebar-wrapper"][data-sidebar-state="collapsed"]:has([data-page-header]) [data-sidebar-control] {
+  height: var(--page-header-height);
+  --workspace-titlebar-control-size: min(1.75rem, calc(var(--page-header-height) - 6px));
+}
+@media (max-width: 767px) {
+  [data-slot="sidebar-wrapper"]:has([data-page-header]) [data-sidebar-control] {
+    height: var(--page-header-height);
+    --workspace-titlebar-control-size: min(1.75rem, calc(var(--page-header-height) - 6px));
+  }
+}
+
+.wco {
+  --native-titlebar-height: env(titlebar-area-height, 0px);
+  --workspace-topbar-height: max(40px, env(titlebar-area-height, 44px));
+  --workspace-controls-top: env(titlebar-area-y, 0px);
+  --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
+  --workspace-controls-right: calc(
+    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
+  );
+  --workspace-native-controls-inset: calc(
+    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
+  );
+}
+
+/* The font tokens are declared outside the inline theme so utilities reference
+   the variables and Settings -> Appearance can override them at runtime. The
+   default stacks are mirrored in `appearanceFonts.ts`. */
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Inter Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  /* Local change: the chat code font (Settings, Appearance; lib/displayPrefs.ts writes the chosen stack
+     on the root). The conversation's monospace text reads it through --font-mono (the chat code
+     font block below), and file previews through the font-chat-code utility. */
+  --font-chat-code: var(--font-mono);
+  /* Two steps below Tailwind's text-xs (12px) for dense UI: metadata rows,
+     badges, counters, keyboard hints and diagnostics tables. 2xs is 11px,
+     3xs is 10px. Provider icon overlays use 4xs (8px) and 5xs (7px) to fit
+     their smaller badges. Registered with tailwind-merge in
+     lib/utils.ts so cn() treats them as font sizes, not colours.
+     Local change: declared outside the inline theme (T3 keeps them inline) so
+     the utilities read the variables and the conversation text size
+     ([data-chat-text] below) can scale them like the default text sizes. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(1 / 0.6875);
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: calc(0.875 / 0.625);
+  --text-4xs: 0.5rem;
+  --text-4xs--line-height: 1;
+  --text-5xs: 0.4375rem;
+  --text-5xs--line-height: 1;
+}
+
+@theme inline {
+  /* Motion. drawer is the decelerating curve for surfaces that slide or pop in
+     (composer context, pills). */
+  --inset-shadow-control-highlight: 0 1px rgb(255 255 255 / 16%);
+  --inset-shadow-control-pressed: 0 1px rgb(0 0 0 / 8%);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  /* The composer's elevation: a soft drop pulled in under the surface, shared
+     by the composer, its context strip and attached banners. */
+  --shadow-composer: 0 1px 2px rgb(0 0 0 / 5%);
+  --shadow-composer-dark: 0 14px 32px -18px rgb(0 0 0 / 75%);
+  /* Overlap the lower toolbar backdrop by one pixel to cover the composer seam. */
+  --spacing-composer-seam: calc(var(--spacing) * 4 - 1px);
+  /* Dark-mode shade where an attached surface meets the composer: 10px of
+     shadow fading away from the seam. Inline, so the offsets resolve on the
+     element. below: the context strip under the composer (1rem seam, faint
+     white fill). above: an attached banner over it (its tint on top). */
+  --background-image-composer-seam-below:
+    linear-gradient(
+      to bottom,
+      transparent 0 1rem,
+      rgb(0 0 0 / 18%) 1rem,
+      transparent calc(1rem + 10px)
+    ),
+    linear-gradient(rgb(255 255 255 / 1%), rgb(255 255 255 / 1%));
+  --background-image-composer-seam-above:
+    linear-gradient(var(--chat-composer-attached-tint), var(--chat-composer-attached-tint)),
+    linear-gradient(
+      to top,
+      transparent 0 var(--chat-composer-attachment-overlap),
+      rgb(0 0 0 / 18%) var(--chat-composer-attachment-overlap),
+      transparent calc(var(--chat-composer-attachment-overlap) + 10px)
+    );
+  --color-zinc-25: oklch(99.2% 0 0);
+  /* Local change: halfway between zinc-500 and zinc-600 (lightness 0.552 and 0.442), the light
+     theme's muted text. zinc-500 came to 4.08:1 on the light fills it sits on (toggle track,
+     user bubble) and 2.69:1 for the icons T3 dims to 70%; this is the lightest zinc that brings
+     them to 4.5:1 and 3:1 (DESIGN.md 7, color token). */
+  --color-zinc-550: oklch(50% 0.0165 285.9);
+  --animate-skeleton: skeleton 2.4s infinite;
+  /* Duty-cycled indicator animations: long holds with stepped ramps, so the
+     compositor updates discrete frames instead of every vsync. */
+  --animate-status-pulse: status-pulse 2s infinite;
+  --animate-status-ping: status-ping 2s infinite;
+  /* Stash pulses hold a highlight for 1.2s; the row then eases back over 200ms, the count snaps.
+     The row alternates two identical keyframes so each stash restarts it without a remount. */
+  --animate-stash-pulse-row: stash-pulse-row 1400ms;
+  --animate-stash-pulse-row-alt: stash-pulse-row-alt 1400ms;
+  --animate-stash-pulse-count: stash-pulse-count 1400ms step-start;
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-error-foreground: var(--error-foreground);
+  --color-tool-error-icon: var(--tool-error-icon);
+  --color-error: var(--error);
+  --color-error-surface: var(--error-surface);
+  --color-update-foreground: var(--update-foreground);
+  --color-update: var(--update);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
+  --color-diff-addition: var(--diff-addition);
+  --color-diff-deletion: var(--diff-deletion);
+  --color-diff-addition-foreground: var(--diff-addition-foreground);
+  --color-diff-deletion-foreground: var(--diff-deletion-foreground);
+  --color-info-foreground: var(--info-foreground);
+  --color-attention: var(--attention);
+  --color-info: var(--info);
+  --color-guest: var(--guest);
+  --color-guest-foreground: var(--guest-foreground);
+  --color-guest-surface: var(--guest-surface);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --color-input: var(--contrast-input);
+  --color-border: var(--contrast-border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--contrast-accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--contrast-muted-foreground);
+  --color-muted: var(--muted);
+  --color-placeholder: var(--contrast-placeholder);
+  --color-secondary-label: var(--contrast-secondary-label);
+  --color-icon-muted: var(--contrast-icon-muted);
+  --color-secondary-foreground: var(--contrast-secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--contrast-popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--contrast-card-foreground);
+  --color-card: var(--card);
+  --color-code: var(--code-background);
+  --color-foreground: var(--contrast-foreground);
+  --color-background: var(--background);
+  --color-message: var(--message-surface);
+  --color-message-foreground: var(--contrast-message-foreground);
+  --color-message-action: var(--message-action);
+  --color-message-action-foreground: var(--message-action-foreground);
+  --color-message-action-hover: var(--message-action-hover);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--contrast-sidebar-foreground);
+  --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
+  --color-sidebar-control-surface: var(--sidebar-control-surface);
+  --color-sidebar-row-hover: var(--sidebar-row-hover);
+  --color-sidebar-row-active: var(--sidebar-row-active);
+  --color-sidebar-row-selected: var(--sidebar-row-selected);
+  --color-sidebar-border: var(--contrast-sidebar-border);
+  --color-sidebar-divider: var(--sidebar-divider);
+  --color-side-surface: var(--side-surface);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  @keyframes skeleton {
+    /* The single loading-bar breath used by every skeleton: one opacity pulse
+       per container, stepped so however many bars sit under it, the compositor
+       draws a handful of discrete frames per cycle rather than one per vsync -
+       which on a 120Hz display is the difference between ~14 and ~288 updates. */
+    0%,
+    42% {
+      opacity: 1;
+      animation-timing-function: steps(4);
+    }
+    50%,
+    92% {
+      opacity: 0.55;
+      animation-timing-function: steps(4);
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes stash-pulse-row {
+    from,
+    85.7% {
+      color: var(--color-foreground);
+    }
+  }
+  @keyframes stash-pulse-row-alt {
+    from,
+    85.7% {
+      color: var(--color-foreground);
+    }
+  }
+  @keyframes stash-pulse-count {
+    from,
+    85.7% {
+      color: var(--color-primary);
+    }
+  }
+  @keyframes status-pulse {
+    0%,
+    40% {
+      opacity: 1;
+      animation-timing-function: steps(6);
+    }
+    50%,
+    90% {
+      opacity: 0.5;
+      animation-timing-function: steps(6);
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes status-ping {
+    /* Burst first (immediate feedback for click ripples), then hold
+       invisible for the rest of the cycle. Mirrors animate-ping's
+       75%-scale start. */
+    0% {
+      opacity: 0.9;
+      scale: 0.75;
+      animation-timing-function: steps(8);
+    }
+    40%,
+    100% {
+      opacity: 0;
+      scale: 2;
+    }
+  }
+}
+
+@utility surface-glass {
+  background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background: var(--background) !important;
+  }
+}
+
+/* Paint find results without changing rendered markdown or copied text. */
+::highlight(t3-thread-find) {
+  color: var(--app-theme-search-match-foreground, oklch(0.216164 0.028283 77.423));
+  background-color: var(--app-theme-search-match-background, oklch(0.915 0.11 85));
+
+  @variant dark {
+    color: var(--app-theme-search-match-foreground, oklch(0.970151 0 0));
+    background-color: var(--app-theme-search-match-background, oklch(0.55 0.1 85));
+  }
+}
+
+::highlight(t3-thread-find-active) {
+  color: var(--app-theme-search-match-active-foreground, oklch(0.216164 0.028283 77.423));
+  background-color: var(
+    --app-theme-search-match-active-background,
+    oklch(0.774202 0.151946 74.331)
+  );
+}
+
+@utility dialog-glass {
+  background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  border-color: color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
+  box-shadow: 0 24px 64px -24px rgb(0 0 0 / 65%);
+
+  @variant dark {
+    border-color: color-mix(in srgb, var(--color-white) 8%, transparent);
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 4%),
+      0 24px 72px -20px rgb(0 0 0 / 90%);
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background: var(--popover) !important;
+  }
+}
+
+@utility dialog-backdrop {
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+
+  @variant dark {
+    background: color-mix(in srgb, var(--background) 64%, transparent);
+  }
+}
+
+@utility dropdown-glass {
+  background: color-mix(
+    in srgb,
+    var(--popover) 18%,
+    color-mix(in srgb, var(--popover) var(--glass-opacity), transparent)
+  );
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  border: 1px solid color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background: var(--popover) !important;
+  }
+}
+
+@utility topbar-scroll-fade {
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgb(0 0 0 / 10%) 10%,
+      rgb(0 0 0 / 30%) 24%,
+      rgb(0 0 0 / 58%) 42%,
+      rgb(0 0 0 / 82%) 62%,
+      rgb(0 0 0 / 96%) 82%,
+      black 100%
+    ),
+    linear-gradient(black, black), linear-gradient(black, black);
+  -webkit-mask-position: top, bottom, right;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size:
+    100% calc(var(--workspace-titlebar-scroll-fade-height) + 1px),
+    100% calc(100% - var(--workspace-titlebar-scroll-fade-height)),
+    var(--app-scrollbar-width) 100%;
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgb(0 0 0 / 10%) 10%,
+      rgb(0 0 0 / 30%) 24%,
+      rgb(0 0 0 / 58%) 42%,
+      rgb(0 0 0 / 82%) 62%,
+      rgb(0 0 0 / 96%) 82%,
+      black 100%
+    ),
+    linear-gradient(black, black), linear-gradient(black, black);
+  mask-position: top, bottom, right;
+  mask-repeat: no-repeat;
+  mask-size:
+    100% calc(var(--workspace-titlebar-scroll-fade-height) + 1px),
+    100% calc(100% - var(--workspace-titlebar-scroll-fade-height)),
+    var(--app-scrollbar-width) 100%;
+}
+
+/* Virtualizers own their native scroll element, so they cannot use ScrollArea's
+   viewport fade. Keep the scrollbar lane opaque while sharing the same fade
+   contract across those lists. */
+@utility virtualized-scroll-fade {
+  -webkit-mask-image: var(--virtualized-scroll-fade-mask), linear-gradient(black, black);
+  mask-image: var(--virtualized-scroll-fade-mask), linear-gradient(black, black);
+  -webkit-mask-position: left, right;
+  mask-position: left, right;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size:
+    calc(100% - var(--app-scrollbar-width)) 100%,
+    var(--app-scrollbar-width) 100%;
+  mask-size:
+    calc(100% - var(--app-scrollbar-width)) 100%,
+    var(--app-scrollbar-width) 100%;
+}
+
+@keyframes live-tool-shine {
+  from {
+    background-position:
+      -4.5rem 0,
+      0 0;
+  }
+  to {
+    background-position:
+      calc(100% + 4.5rem) 0,
+      0 0;
+  }
+}
+
+@utility live-tool-shine {
+  @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+    color: transparent;
+    background-image:
+      linear-gradient(to right, transparent, var(--contrast-foreground), transparent),
+      linear-gradient(var(--contrast-secondary-label), var(--contrast-secondary-label));
+    background-size:
+      4.5rem 100%,
+      100% 100%;
+    background-repeat: no-repeat;
+    background-clip: text;
+    animation: live-tool-shine 2.2s steps(30) infinite;
+    animation-play-state: var(--visible-animation-state, paused);
+  }
+}
+
+@utility visible-animate-spin {
+  animation: var(--animate-spin);
+  animation-play-state: var(--visible-animation-state, paused);
+  will-change: var(--visible-animation-will-change, auto);
+}
+
+@keyframes live-activity-focus {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes live-activity-focus-counter {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@utility live-activity-focus {
+  --live-activity-focus-width: 4.5rem;
+
+  right: auto;
+  left: calc(-1 * var(--live-activity-focus-width));
+  width: calc(100% + var(--live-activity-focus-width) + var(--live-activity-focus-width));
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    rgb(0 0 0 / 12%) 0.675rem,
+    rgb(0 0 0 / 55%) 1.575rem,
+    black 2.25rem,
+    rgb(0 0 0 / 55%) 2.925rem,
+    rgb(0 0 0 / 12%) 3.825rem,
+    transparent var(--live-activity-focus-width),
+    transparent 100%
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    rgb(0 0 0 / 12%) 0.675rem,
+    rgb(0 0 0 / 55%) 1.575rem,
+    black 2.25rem,
+    rgb(0 0 0 / 55%) 2.925rem,
+    rgb(0 0 0 / 12%) 3.825rem,
+    transparent var(--live-activity-focus-width),
+    transparent 100%
+  );
+  mask-repeat: no-repeat;
+  animation: live-activity-focus 2.2s steps(30) infinite;
+  animation-play-state: var(--visible-animation-state, paused);
+  will-change: var(--visible-animation-will-change, auto);
+
+  @media (prefers-reduced-motion: reduce), (forced-colors: active) {
+    animation: none;
+    opacity: 0;
+    will-change: auto;
+  }
+}
+
+@utility live-activity-focus-counter {
+  width: 100%;
+  animation: live-activity-focus-counter 2.2s steps(30) infinite;
+  animation-play-state: var(--visible-animation-state, paused);
+  will-change: var(--visible-animation-will-change, auto);
+
+  @media (prefers-reduced-motion: reduce), (forced-colors: active) {
+    animation: none;
+    will-change: auto;
+  }
+}
+
+@utility live-activity-focus-aligned {
+  width: calc(100% - var(--live-activity-focus-width) - var(--live-activity-focus-width));
+  margin-left: var(--live-activity-focus-width);
+}
+
+@property --assistant-citation-highlight-opacity {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@layer base {
+  ::highlight(t3-assistant-citation) {
+    background-color: color-mix(
+      in oklab,
+      var(--primary) calc(var(--assistant-citation-highlight-opacity) * 100%),
+      transparent
+    );
+  }
+  ::highlight(t3-assistant-citation-comment) {
+    background-color: color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+  :root {
+    /* Keep the original T3 Code artwork palettes as the defaults. Built-in
+       themes override them with their own pigments in the components layer. */
+    --stage-art-top: oklch(0.782169 0.123386 240.226);
+    --stage-art-mid: oklch(0.616111 0.195824 259.735);
+    --stage-art-bottom: oklch(0.441553 0.232394 265.474);
+    --stage-art-highlight: oklch(0.951597 0.037289 215.482);
+    --stage-art-secondary: oklch(0.794668 0.12136 235.46);
+    --stage-art-tertiary: oklch(0.678991 0.170261 275.365);
+    --stage-art-line: oklch(0.959666 0.029238 218.179);
+    --stage-art-celeste-highlight: oklch(0.968763 0.045822 196.42);
+    --stage-art-celeste-secondary: oklch(0.827395 0.126071 211.26);
+    --stage-art-violet-highlight: oklch(0.895381 0.053248 286.447);
+    --stage-art-grid-line: oklch(0.966822 0.01757 239.99);
+    --stage-night-base-top: oklch(0.283792 0.117327 297.201);
+    --stage-night-base-mid: oklch(0.227147 0.086086 277.99);
+    --stage-night-base-bottom: oklch(0.200528 0.055699 261.216);
+    --stage-night-top: var(--stage-night-base-top);
+    --stage-night-mid: var(--stage-night-base-mid);
+    --stage-night-bottom: var(--stage-night-base-bottom);
+    --stage-night-highlight: oklch(0.707246 0.157418 252.091);
+    --stage-night-secondary: oklch(0.600473 0.182225 277.296);
+    --stage-night-tertiary: oklch(0.62583 0.210886 305.994);
+    --stage-night-line: oklch(0.938794 0.029114 273.103);
+    --stage-night-glow-highlight: oklch(0.553749 0.176543 271.958);
+    --stage-night-glow-secondary: oklch(0.345571 0.117466 273.568);
+    --stage-night-sparkle: oklch(0.880867 0.057747 269.011);
+
+    @variant dark {
+      --stage-art-top: oklch(0.581473 0.149124 256.9);
+      --stage-art-mid: oklch(0.456509 0.159377 261.945);
+      --stage-art-bottom: oklch(0.291327 0.136578 267.649);
+    }
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* The app's 2px outlines stay inside controls at clipped and scrollport edges. */
+  *,
+  ::before,
+  ::after {
+    outline-offset: -2px;
+  }
+  :where([data-slot="menu-popup"], [data-slot="select-popup"], [data-slot="popover-popup"]):focus,
+  :where(
+    [data-slot="menu-popup"],
+    [data-slot="select-popup"],
+    [data-slot="popover-popup"]
+  ):focus-visible {
+    @apply outline-none ring-0;
+  }
+  html,
+  body {
+    background-color: var(--app-chrome-background);
+  }
+  body {
+    @apply text-foreground relative;
+  }
+}
+
+@layer components {
+  .chat-content-lane {
+    margin-inline: auto;
+    width: 100%;
+    min-width: 0;
+    max-width: var(--chat-content-max-width);
+  }
+
+  .messages-timeline-row-frame {
+    padding-inline: 0;
+  }
+}
+
+/* Safe-area inset utilities for surfaces that opt into edge-to-edge rendering.
+   Insets resolve to 0 when the browser already constrains the layout viewport
+   to the safe area. */
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+@utility pl-safe {
+  padding-left: max(env(safe-area-inset-left), 0px);
+}
+@utility pr-safe {
+  padding-right: max(env(safe-area-inset-right), 0px);
+}
+
+/* Grain texture for chrome surfaces that float above the body (see the
+   --surface-grain note). Layered over the element's background-color, so it
+   composes with bg-* utilities. */
+@utility surface-grain {
+  background-image: var(--surface-grain);
+  background-repeat: repeat;
+  background-size: var(--surface-grain-size);
+}
+
+/* Suppress all transitions during theme changes */
+.no-transitions,
+.no-transitions *,
+.no-transitions *::before,
+.no-transitions *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+}
+
+/* Local change: also on .dark elements (see .dark above), so a dark scope inside the light theme
+   declares the light tokens again and then the dark ones; tokens that reference others resolve
+   there with the dark values. */
+:root,
+.dark {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --background: var(--theme-light-background);
+  --app-chrome-background: var(--background);
+  --toolbar-background: var(--app-chrome-background);
+  --toolbar-foreground: var(--foreground);
+  --toolbar-border: var(--border);
+  --toolbar-control: var(--popover);
+  --toolbar-control-foreground: var(--foreground);
+  --toolbar-control-hover: var(--accent);
+  --surface-raised: color-mix(in srgb, var(--card) 20%, transparent);
+  --foreground: var(--theme-light-foreground);
+  --card: var(--theme-light-card);
+  --card-foreground: var(--theme-light-foreground);
+  --popover: var(--theme-light-card);
+  --popover-foreground: var(--theme-light-foreground);
+  --primary: var(--theme-light-primary);
+  --primary-foreground: var(--theme-light-primary-foreground);
+  --secondary: var(--color-zinc-50);
+  --secondary-foreground: var(--color-zinc-800);
+  --muted: var(--color-zinc-50);
+  /* Local change: zinc-500 in T3 (see --color-zinc-550). */
+  --muted-foreground: var(--theme-light-muted-foreground);
+  --placeholder: var(--muted-foreground);
+  --secondary-label: var(--muted-foreground);
+  --icon-muted: var(--muted-foreground);
+  /* One step past the accent, so a user turn stands off the near-white canvas. */
+  --message-surface: var(--theme-light-message-surface);
+  /* The default bubble color as the settings' swatch paints it; --message-surface itself changes with the bubble choice. */
+  --message-bubble-preset-default: var(--theme-light-message-surface);
+  --message-foreground: var(--foreground);
+  --message-action: var(--primary);
+  --message-action-foreground: var(--primary-foreground);
+  --message-action-hover: color-mix(in srgb, var(--primary) 90%, var(--background));
+  --accent: var(--theme-light-accent);
+  --accent-foreground: var(--theme-light-foreground);
+  /* Local change: the light status colors are the theme source's calmer family
+     (packages/shared/src/themeColors.ts): fills reach 3:1 on the light surfaces and the error fill
+     4.5:1 under white text; text takes the -foreground tokens. */
+  --error: var(--theme-light-error);
+  --error-foreground: var(--theme-light-error-foreground);
+  --tool-error-icon: var(--error);
+  --error-surface: color-mix(in srgb, var(--error) 8%, transparent);
+  --destructive: var(--error);
+  --border: var(--theme-light-border);
+  --input: var(--theme-light-input);
+  --ring: var(--primary);
+  --destructive-foreground: var(--error-foreground);
+  --info: var(--theme-light-info);
+  --info-foreground: var(--theme-light-info-foreground);
+  --attention: var(--theme-light-attention);
+  /* Messages from a guest link, and the sidebar Request status. */
+  --guest: var(--color-fuchsia-500);
+  --guest-foreground: var(--color-fuchsia-600);
+  --guest-surface: color-mix(in srgb, var(--guest) 14%, var(--message-surface));
+  --success: var(--theme-light-success);
+  --success-foreground: var(--theme-light-success-foreground);
+  --warning: var(--theme-light-warning);
+  /* Local change: amber-700 in T3, 4.39:1 on its own warning surface over the sidebar. */
+  --warning-foreground: var(--theme-light-warning-foreground);
+  --warning-surface: color-mix(in srgb, var(--warning) 8%, transparent);
+  --update: var(--primary);
+  --update-foreground: var(--primary);
+  /* Keep every sidebar primitive on the same light surface hierarchy, including
+     portaled mobile sheets and settings navigation outside the app sidebar. */
+  --sidebar: var(--theme-light-sidebar);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-muted-foreground: var(--muted-foreground);
+  --sidebar-control-surface: var(--color-zinc-100);
+  --sidebar-row-hover: var(--color-zinc-25);
+  --sidebar-row-active: var(--color-white);
+  --sidebar-row-selected: var(--color-white);
+  --sidebar-border: var(--border);
+  --sidebar-stage-fade: var(--sidebar);
+  /* Local change: the side panels (sessions, right panel) and the line that parts them from
+     the conversation. */
+  --side-surface: var(--theme-light-sidebar);
+  --sidebar-divider: var(--sidebar-border);
+  --code-background: color-mix(in srgb, var(--card) 90%, var(--background));
+  --code-foreground: var(--foreground);
+  --terminal-background: var(--background);
+  --terminal-foreground: var(--foreground);
+  --terminal-cursor: rgb(38 56 78);
+  --terminal-selection-background: rgb(37 63 99 / 20%);
+
+  @variant dark {
+    color-scheme: dark;
+    /* The dark theme's surfaces come from five levels, one chroma (zero) and five lightnesses
+       (DESIGN.md 7d). Every surface token below points at one of them; a see-through surface is a
+       level with an opacity over the layer under it. White-alpha tints (hover, selection, the
+       muted and accent fills) sit on top of a level and are not levels.
+       0 canvas, 1 sidebar, side panels, cards, popovers, 2 code blocks, 3 strong hover and
+       selection, 4 strongest emphasis. L is OKLCH lightness. */
+    --surface-0: var(--theme-dark-surface-0); /* L 0.000 */
+    --surface-1: var(--theme-dark-surface-1); /* L 0.168 */
+    --surface-2: var(--theme-dark-surface-2); /* L 0.226 */
+    --surface-3: var(--theme-dark-surface-3); /* L 0.289 */
+    --surface-4: var(--theme-dark-surface-4); /* L 0.337 */
+    /* Level 1 under --glass-opacity (the same 80% the dialogs and menus use), for a see-through
+       surface. The composer box puts level 2 under the same opacity (ThreadComposer.tsx
+       --composer-glass); the user's bubble is opaque level 1. */
+    --surface-veil: color-mix(in srgb, var(--surface-1) var(--glass-opacity), transparent);
+    --background: var(--surface-0);
+    --surface-raised: var(--surface-1);
+    --foreground: var(--theme-dark-foreground);
+    --card: var(--surface-1);
+    --card-foreground: var(--theme-dark-foreground);
+    --popover: var(--surface-1);
+    --popover-foreground: var(--theme-dark-foreground);
+    --primary: var(--theme-dark-primary);
+    --primary-foreground: var(--theme-dark-primary-foreground);
+    --secondary: --alpha(var(--color-white) / 3%);
+    --secondary-foreground: var(--color-neutral-100);
+    --muted: --alpha(var(--color-white) / 3%);
+    --muted-foreground: var(--theme-dark-muted-foreground);
+    --accent: var(--theme-dark-accent);
+    --accent-foreground: var(--color-neutral-100);
+    /* A user turn is opaque level 1 (user 2026-11-18: no transparency on the bubble). */
+    --message-surface: var(--theme-dark-message-surface);
+    --message-bubble-preset-default: var(--theme-dark-message-surface);
+    --code-background: var(--surface-1);
+    --error: var(--theme-dark-error);
+    --error-foreground: var(--theme-dark-error-foreground);
+    --tool-error-icon: #fca5a5;
+    --error-surface: color-mix(in srgb, var(--error) 16%, transparent);
+    --border: var(--theme-dark-border);
+    --input: var(--theme-dark-input);
+    --info: var(--theme-dark-info);
+    --info-foreground: var(--theme-dark-info-foreground);
+    --attention: var(--theme-dark-attention);
+    --guest-foreground: var(--color-fuchsia-300);
+    --success: var(--theme-dark-success);
+    --success-foreground: var(--theme-dark-success-foreground);
+    --warning: var(--theme-dark-warning);
+    --warning-foreground: var(--theme-dark-warning-foreground);
+    --warning-surface: color-mix(in srgb, var(--warning) 16%, transparent);
+    --update-foreground: var(--color-blue-400);
+    --sidebar: var(--card);
+    --sidebar-control-surface: var(--muted);
+    --sidebar-row-hover: var(--accent);
+    --sidebar-row-active: var(--accent);
+    --sidebar-row-selected: var(--muted);
+    --sidebar-stage-fade: var(--card);
+    /* A step above the black conversation canvas, and the parting line a step above that. */
+    --side-surface: var(--surface-1);
+    /* 8%, not 12%: on the black canvas the line read as a white stripe (user request 2026-11-16);
+       the sidebar's own tone against the canvas already marks the edge. */
+    --sidebar-divider: rgb(255 255 255 / 8%);
+    --terminal-cursor: rgb(180 203 255);
+    --terminal-selection-background: rgb(180 203 255 / 25%);
+  }
+}
+
+/* Keep both sidebar implementations (default and legacy) on the same quiet
+   zinc hierarchy: zinc-50 navigation, zinc-25 hover, and white selected/raised
+   surfaces. */
+[data-app-sidebar] {
+  --background: var(--theme-light-background);
+  --foreground: var(--theme-light-foreground);
+  --card: var(--theme-light-card);
+  --card-foreground: var(--theme-light-foreground);
+  --accent: var(--theme-light-accent);
+  --accent-foreground: var(--theme-light-foreground);
+  --muted: var(--color-zinc-50);
+  /* Local change: zinc-500 in T3, as the root's muted text (see --color-zinc-550). */
+  --muted-foreground: var(--theme-light-muted-foreground);
+  --border: var(--theme-light-border);
+  --input: var(--theme-light-input);
+  --sidebar: var(--theme-light-sidebar);
+  --sidebar-foreground: var(--theme-light-foreground);
+  --sidebar-muted-foreground: var(--theme-light-muted-foreground);
+  --sidebar-control-surface: var(--color-zinc-100);
+  --sidebar-row-hover: var(--color-zinc-25);
+  --sidebar-row-active: var(--color-white);
+  --sidebar-row-selected: var(--color-white);
+  --sidebar-border: var(--theme-light-border);
+  --sidebar-stage-fade: var(--sidebar);
+
+  @variant dark {
+    --background: var(--surface-0);
+    --foreground: #f1f3f7;
+    --card: var(--surface-0);
+    --card-foreground: var(--foreground);
+    --accent: var(--surface-2);
+    --accent-foreground: #f7f9ff;
+    --muted: var(--surface-0);
+    --muted-foreground: #a3a3a3;
+    --border: var(--theme-dark-border);
+    --input: rgb(255 255 255 / 18%);
+    /* Local change: the sidebar takes the side surface (see :root). */
+    --sidebar: var(--side-surface);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-muted-foreground: var(--muted-foreground);
+    --sidebar-control-surface: var(--muted);
+    --sidebar-row-hover: color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+    --sidebar-row-active: color-mix(in srgb, var(--contrast-foreground) 11%, transparent);
+    --sidebar-row-selected: color-mix(in srgb, var(--contrast-foreground) 7%, transparent);
+    --sidebar-border: var(--border);
+    --sidebar-stage-fade: var(--sidebar);
+    /* Row metadata sits a step below read titles (75% white). */
+    --secondary-label: #8f8f8f;
+  }
+}
+
+/* Modified files get a muted blue so added and deleted files lead. Built from the info token,
+   which themes do not override, so it stays blue in every theme. */
+:root {
+  --diff-modified-icon: color-mix(in srgb, var(--info-foreground) 50%, var(--muted-foreground));
+
+  @variant dark {
+    /* On black a gray mix stays as bright as the blue, so dim with transparency instead. */
+    --diff-modified-icon: color-mix(in srgb, var(--info-foreground) 65%, transparent);
+    --diff-added-icon: var(--success-foreground);
+  }
+}
+
+/* Blue-orange already spends blue on additions. Same specificity as the dark block above and
+   later, so it wins there too. */
+:root[data-diff-color-scheme="blue-orange"] {
+  --diff-modified-icon: var(--muted-foreground);
+  --diff-added-icon: initial;
+
+  @variant dark {
+    --diff-modified-icon: color-mix(in srgb, var(--muted-foreground) 65%, transparent);
+  }
+}
+
+/* A diff header's copy button shows on file hover or focus. */
+@media (hover: hover) {
+  diffs-container:not(:hover) [data-diff-copy-path]:not(:focus-within) {
+    opacity: 0;
+  }
+}
+
+/* Recompute contrast wherever a subtree owns its own semantic color palette. Local change: a dark
+   scope (.dark) is one too. */
+:root,
+.dark,
+[data-app-sidebar] {
+  --contrast-toolbar-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--toolbar-foreground) var(--appearance-contrast-base),
+      var(--toolbar-background)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-toolbar-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--toolbar-border) var(--appearance-contrast-base), transparent),
+    var(--toolbar-foreground) var(--appearance-contrast-border-boost)
+  );
+  --contrast-toolbar-control-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--toolbar-control-foreground) var(--appearance-contrast-base),
+      var(--toolbar-control)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-input: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--input) var(--appearance-contrast-base), transparent),
+    var(--foreground) var(--appearance-contrast-border-boost)
+  );
+  --contrast-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--border) var(--appearance-contrast-base), transparent),
+    var(--foreground) var(--appearance-contrast-border-boost)
+  );
+  --contrast-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--foreground) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-muted-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--muted-foreground) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-placeholder: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--placeholder) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-secondary-label: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--secondary-label) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-icon-muted: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--icon-muted) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-card-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--card-foreground) var(--appearance-contrast-base), var(--card)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-popover-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--popover-foreground) var(--appearance-contrast-base), var(--popover)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-accent-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--accent-foreground) var(--appearance-contrast-base), var(--accent)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-secondary-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--secondary-foreground) var(--appearance-contrast-base),
+      var(--secondary)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-message-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--message-foreground) var(--appearance-contrast-base),
+      var(--message-surface)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-sidebar-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--sidebar-foreground) var(--appearance-contrast-base), var(--sidebar)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-sidebar-muted-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--sidebar-muted-foreground) var(--appearance-contrast-base),
+      var(--sidebar)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-sidebar-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--sidebar-border) var(--appearance-contrast-base), transparent),
+    var(--sidebar-foreground) var(--appearance-contrast-border-boost)
+  );
+}
+
+body {
+  /* Reference the theme token (not a literal stack) so the Settings ->
+     Appearance runtime override of --font-sans reaches all interface text. */
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+}
+
+/* Lighter default icon stroke. In the base layer so stroke-* utilities still win; any
+   CSS beats lucide's stroke-width="2" attribute. */
+@layer base {
+  :where(svg.lucide[stroke-width="2"]) {
+    stroke-width: 1.75;
+  }
+}
+
+html,
+body {
+  min-height: calc(100svh + env(safe-area-inset-top));
+  overscroll-behavior: none;
+}
+
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: hidden;
+  overscroll-behavior-y: none;
+  padding-top: max(env(safe-area-inset-top), 0px);
+  padding-right: var(--desktop-window-right-resize-inset);
+}
+
+/* App-chrome grain. Baked into each surface's own background (behind
+   content) rather than a fixed overlay on top: a full-viewport overlay
+   forces the compositor to re-blend every frame any animation produces,
+   which multiplied idle GPU cost. The overlay's 0.035 opacity lives in the
+   SVG rect instead. Surfaces that float over the body (e.g. the inset main
+   card) must opt in via the surface-grain utility, or they lose the
+   grain's subtle brightening and stand out against the body. */
+:root {
+  --surface-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  --surface-grain-size: 256px 256px;
+}
+
+body {
+  background-image: var(--surface-grain);
+  background-repeat: repeat;
+  background-size: var(--surface-grain-size);
+}
+
+pre,
+code {
+  font-family: var(--font-mono);
+}
+
+/* Code blocks in chat carry the size preference. Scoped to chat markdown
+   rather than every pre: a global rule would beat text-size utilities and
+   inherited sizes on unrelated pre surfaces (terminal previews, approvals).
+   Inline code stays relative to its sentence so it never towers over prose;
+   diffs and file previews take the size through --diffs-font-size.
+   Local change: the chat code text size (Settings, Appearance: Chat code text size) is
+   --chat-code-ratio, the code's size over the text around it. A pre takes it
+   once from the text it sits in, and its code inherits. Inline code has its own size
+   (--chat-inline-code-ratio, Settings, Appearance: 대화 inline code 글자 크기). */
+.chat-markdown pre {
+  font-size: var(--font-size-code, calc(1em * var(--chat-code-ratio, 1)));
+}
+
+.chat-markdown .chat-markdown-shiki :is(.shiki, .diffs),
+:is(.chat-markdown, .composer-tiptap) pre code {
+  font-size: var(--font-size-code, inherit);
+}
+
+/* The chat code text size as a factor over the text around the code: the setting's own factor
+   (lib/displayPrefs.ts writes --chat-code-scale-setting on the root) over the 100% text outside
+   the conversation (file previews, a Markdown preview in the right panel), 1 when it is not set.
+   Inside the conversation it is measured against the conversation text size ([data-chat-text]
+   below), so code that follows the conversation stays at a ratio of 1. */
+:root {
+  --chat-code-ratio: var(--chat-code-scale-setting, 1);
+  --chat-inline-code-ratio: var(--chat-inline-code-scale-setting, 1);
+}
+
+/* @pierre/diffs surfaces (diffs, file previews, annotatable code, search
+   lines) render inside shadow roots but consult these hooks with their own
+   literal stacks as fallback. Custom properties inherit across the shadow
+   boundary, so defining them once here routes every code surface through the
+   appearance font tokens. */
+:root {
+  --diffs-font-family: var(--font-chat-code);
+  --diffs-header-font-family: var(--font-sans);
+}
+
+/* Monospace font (Settings, Appearance: Monospace font; the terminal mode reads the same one). The conversation (ThreadView marks it
+   data-chat-text) and chat markdown anywhere, a markdown file preview too, draw their monospace
+   text in it: code blocks, inline code, tool output and tool diffs, the composer's inline code.
+   The terminal mode draws every glyph in the terminal font, its code blocks included (its pre
+   and code elements read --font-mono through the pre, code rule above). */
+[data-chat-text],
+.chat-markdown {
+  --font-mono: var(--font-chat-code);
+}
+
+.term-root {
+  --font-mono: var(--term-font);
+}
+
+/* Conversation font (Settings, Appearance: 대화 글꼴). A conversation font of its own (lib/displayPrefs.ts
+   puts data-chat-font and --font-chat-text-setting on the root) replaces the interface font
+   inside the conversation, for inherited text and for the font-sans utility alike; unset, the
+   conversation draws in the interface font. The terminal mode sets its own font on .term-root. */
+:root[data-chat-font] [data-chat-text] {
+  --font-sans: var(--font-chat-text-setting);
+  font-family: var(--font-sans);
+}
+
+/* Keep parent scrollbar styles off iframe owners to avoid WebKit resize loops: https://webkit.org/b/324485 */
+:where(:not(iframe))::-webkit-scrollbar {
+  width: var(--app-scrollbar-width);
+}
+
+:where(:not(iframe))::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:where(:not(iframe))::-webkit-scrollbar-thumb {
+  background: var(--app-scrollbar-thumb);
+  border-radius: 3px;
+}
+
+:where(:not(iframe))::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+}
+
+/* Chat markdown rendering */
+
+.chat-markdown > :first-child {
+  margin-top: 0;
+}
+
+.chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown p,
+.chat-markdown ul,
+.chat-markdown ol,
+.chat-markdown blockquote,
+.chat-markdown pre,
+.chat-markdown .chat-markdown-table-container,
+.composer-tiptap ul,
+.composer-tiptap ol {
+  margin: 0.65rem 0;
+}
+
+:is(.chat-markdown, .composer-tiptap) h1,
+:is(.chat-markdown, .composer-tiptap) h2,
+:is(.chat-markdown, .composer-tiptap) h3,
+:is(.chat-markdown, .composer-tiptap) h4,
+:is(.chat-markdown, .composer-tiptap) h5,
+:is(.chat-markdown, .composer-tiptap) h6 {
+  margin: 1.25rem 0 0.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--contrast-foreground);
+}
+
+:is(.chat-markdown, .composer-tiptap) h1 {
+  font-size: calc(1.25rem * var(--chat-text-scale, 1));
+}
+
+:is(.chat-markdown, .composer-tiptap) h2 {
+  font-size: calc(1.125rem * var(--chat-text-scale, 1));
+}
+
+:is(.chat-markdown, .composer-tiptap) h3 {
+  font-size: calc(1rem * var(--chat-text-scale, 1));
+}
+
+:is(.chat-markdown, .composer-tiptap) h4,
+:is(.chat-markdown, .composer-tiptap) h5,
+:is(.chat-markdown, .composer-tiptap) h6 {
+  font-size: calc(0.875rem * var(--chat-text-scale, 1));
+}
+
+:is(.chat-markdown, .composer-tiptap) h6 {
+  color: var(--contrast-muted-foreground);
+}
+
+:is(.chat-markdown, .composer-tiptap) ul {
+  /* Reset for nested uls under a widened ol. --list-gutter is an inherited
+     custom property, so without this a task-list under a multi-digit ordered
+     list would inherit the outer gutter instead of its own default. */
+  --list-gutter: 1.25rem;
+  padding-inline-start: 1.25rem;
+  list-style-type: disc;
+}
+
+/* Outside markers paint past the padding box, so the gutter must fit `0. `,
+   measured per font in appearanceFonts. ChatMarkdown widens it inline for
+   multi-digit markers; setting it here stops a nested ol inheriting that. */
+:is(.chat-markdown, .composer-tiptap) ol {
+  --list-gutter: max(1.25rem, var(--list-marker-sans, 0px));
+  padding-inline-start: var(--list-gutter, 1.25rem);
+  list-style-type: decimal;
+}
+
+:is(.chat-markdown, .composer-tiptap) ol > li::marker {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The composer shows the marker the source has, `3)` or a nested `7.`, not the
+   browser counter. Browsers without ::marker content fall back to `start`. */
+.composer-tiptap ol > li[data-marker]::marker {
+  content: attr(data-marker) " ";
+}
+
+/* The prompt font and size can differ from the interface, so its gutter must
+   also follow the prompt's font metrics. */
+.composer-tiptap ol {
+  --list-gutter: max(1.25rem, 3ch);
+}
+
+.composer-tiptap ol:has(> li[data-marker-width="3"]) {
+  --list-gutter: max(1.25rem, 4ch);
+}
+
+.composer-tiptap ol:has(> li[data-marker-width="4"]) {
+  --list-gutter: max(1.25rem, 5ch);
+}
+
+.composer-tiptap ol:has(> li[data-marker-width="5"]) {
+  --list-gutter: max(1.25rem, 6ch);
+}
+
+.composer-tiptap ol:has(> li[data-marker-width="6"]) {
+  --list-gutter: max(1.25rem, 7ch);
+}
+
+.composer-tiptap ol:has(> li[data-marker-width="7"]) {
+  --list-gutter: max(1.25rem, 8ch);
+}
+
+.composer-tiptap ol:has(> li[data-marker-width="8"]) {
+  --list-gutter: max(1.25rem, 9ch);
+}
+
+.composer-tiptap ol:has(> li[data-marker-width="9"]) {
+  --list-gutter: max(1.25rem, 10ch);
+}
+
+.composer-tiptap ol:has(> li[data-marker-width="10"]) {
+  --list-gutter: max(1.25rem, 11ch);
+}
+
+.composer-tiptap ul {
+  padding-inline-start: max(1.25rem, 2ch);
+}
+
+:is(.chat-markdown, .composer-tiptap) ul ul {
+  list-style-type: circle;
+}
+
+:is(.chat-markdown, .composer-tiptap) ul ul ul {
+  list-style-type: square;
+}
+
+.chat-markdown ol ol {
+  list-style-type: lower-alpha;
+}
+
+.chat-markdown ol ol ol {
+  list-style-type: lower-roman;
+}
+
+.chat-markdown.user-message-markdown ol {
+  list-style-type: decimal;
+}
+
+.chat-markdown li + li {
+  margin-top: 0.25rem;
+}
+
+/* GitHub-style task lists: the checkbox replaces the list marker. */
+.chat-markdown li.task-list-item {
+  list-style-type: none;
+}
+
+.chat-markdown li.task-list-item input[type="checkbox"] {
+  margin-block: 0 0.15em;
+  margin-inline: calc(-1 * var(--list-gutter, 1.25rem)) 0.35em;
+  vertical-align: middle;
+}
+
+/* Markdown assumes inline images, GitHub comments lay button images out in a row, and the
+   Tailwind preflight's block-level img would stack them one per line. */
+.chat-markdown img {
+  display: inline-block;
+}
+
+.chat-markdown a {
+  text-decoration: none;
+}
+
+/* Triple-click selection stops at block-level boxes, flex items included, so file chips in
+   prose stay inline-level down to the icon and label. */
+.chat-markdown-file-link {
+  display: inline-block;
+  overflow-x: clip;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-markdown-file-link > :is(svg, img) {
+  display: inline;
+  margin-inline-end: 0.2em;
+  vertical-align: -0.125em;
+}
+
+.chat-markdown-file-link > [data-slot="context-chip-label"] {
+  display: inline;
+}
+
+/* File links and context chips own their color and focus ring. */
+.chat-markdown a:not(.chat-markdown-file-link, :has([data-slot="context-chip-label"])) {
+  color: var(--info-foreground);
+}
+
+/* Local change: a file chip that opens the right panel takes the link color, icon and name both;
+   a chip that only shows a path keeps the text color. */
+button.chat-markdown-file-link {
+  --context-chip-accent: var(--info-foreground);
+}
+
+.chat-markdown
+  a:not(
+    .chat-markdown-file-link,
+    :has([data-slot="context-chip-label"]),
+    [data-markdown-image-link]
+  ):hover,
+.chat-markdown
+  a:not(
+    .chat-markdown-file-link,
+    :has([data-slot="context-chip-label"]),
+    [data-markdown-image-link]
+  ):focus-visible {
+  background-image: radial-gradient(circle, currentcolor 0.75px, transparent 1px);
+  background-position: left bottom;
+  background-repeat: repeat-x;
+  background-size: 4px 2px;
+}
+
+:is(.chat-markdown, .composer-tiptap) blockquote {
+  border-inline-start: 2px solid color-mix(in srgb, currentcolor 35%, transparent);
+  padding-inline-start: 0.8rem;
+  color: inherit;
+}
+
+.composer-tiptap blockquote {
+  margin: 0.65rem 0;
+}
+
+/* Surface borders can blend into dark message bubbles; rules need a readable color. */
+:is(.chat-markdown, .composer-tiptap) hr {
+  @variant dark {
+    border-color: var(--contrast-muted-foreground);
+  }
+}
+
+.composer-tiptap hr {
+  margin: 0.65rem 0;
+}
+
+/* Block spacing separates blocks, not the draft from the composer edge. A
+   leading list or quote would otherwise push the first line down, and the
+   one-line resting composer clips it. */
+.composer-tiptap > :first-child {
+  margin-top: 0;
+}
+
+.composer-tiptap > :last-child {
+  margin-bottom: 0;
+}
+
+/* A heading at the top of a draft should not push the first line down. */
+.composer-tiptap :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+}
+
+.chat-markdown section[data-footnotes] {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--contrast-border);
+  padding-top: 0.75rem;
+  color: var(--contrast-muted-foreground);
+  font-size: calc(0.75rem * var(--chat-text-scale, 1));
+}
+
+.chat-markdown section[data-footnotes] ol {
+  margin: 0;
+}
+
+.chat-markdown section[data-footnotes] li + li {
+  margin-top: 0.35rem;
+}
+
+.chat-markdown a[data-footnote-ref],
+.chat-markdown a[data-footnote-backref] {
+  display: inline-flex;
+  min-width: 1rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.25rem;
+  text-decoration: none;
+  font-size: calc(0.6875rem * var(--chat-text-scale, 1));
+  font-weight: 600;
+}
+
+/* Local change: chat code surfaces, the fenced block frame and inline code (Settings, Appearance:
+   Chat code block color; DESIGN.md 7, chat code blocks). T3's default look tints them with
+   --secondary and --input/32 and drops the border in dark mode, which on maru's black canvas came
+   to #090909 on #000000 (1.06:1). Here the background is a theme token and the rest follows it:
+   - On the canvas the code takes --chat-code-background. In the user's bubble it moves toward
+     --chat-code-message-toward by --chat-code-message-shift, so it stands off the bubble as the
+     canvas code stands off the canvas.
+   - The 1px border moves from that surface toward the code's text color by
+     --chat-code-border-mix.
+   - A preset is the root's data-chat-code-background, which picks one of the
+     --chat-code-preset-* tokens. A custom color is the root's own --chat-code-background, with
+     data-chat-code-scheme naming the color scheme its text and syntax colors need
+     (lib/displayPrefs.ts).
+   Every preset keeps the --syntax-* colors at 4.5:1 or more on both surfaces: dark surfaces stay
+   at relative luminance 0.025 or below, light ones at 0.82 or above (the bounds the --syntax-*
+   block below was tuned for). */
+:root {
+  --chat-code-preset-default: var(--theme-light-code-background);
+  --chat-code-preset-terminal: var(--chat-code-term-light, #eceff3);
+  --chat-code-background: var(--chat-code-preset-default);
+  --chat-code-message-toward: var(--color-white);
+  --chat-code-message-shift: 60%;
+  --chat-code-message-background: color-mix(
+    in oklab,
+    var(--chat-code-background),
+    var(--chat-code-message-toward) var(--chat-code-message-shift)
+  );
+  --chat-code-border-mix: 20%;
+
+  @variant dark {
+    --chat-code-preset-default: var(--theme-dark-code-background);
+    /* The terminal mode's background (.term-root --term-bg). lib/terminalTheme.ts sets the
+       --chat-code-term-* variables on the root when the terminal theme has another background (within
+       the luminance bounds above); unset, these are the iTerm profile's. */
+    --chat-code-preset-terminal: var(--chat-code-term-dark, #14191e);
+    --chat-code-message-shift: 0%;
+    --chat-code-border-mix: 16%;
+  }
+}
+
+:root[data-chat-code-background="terminal"] {
+  --chat-code-background: var(--chat-code-preset-terminal);
+}
+
+/* The user's bubble in blue (settings 화면, 내 말풍선 색; lib/displayPrefs.ts): the theme's accent
+   with white text in both themes, so the user's turns stand apart from the replies. This rule
+   comes after the theme blocks, so it wins over their --message-surface. Inside the bubble, links
+   are white and underlined, and the muted labels (a folded message's header) are white at 75%. */
+:root[data-message-bubble="blue"] {
+  --message-surface: var(--primary);
+  --message-foreground: var(--color-white);
+  --contrast-message-foreground: var(--color-white);
+}
+
+:root[data-message-bubble="blue"] [data-user-message-bubble] {
+  --muted-foreground: color-mix(in srgb, var(--color-white) 75%, transparent);
+  --info-foreground: var(--color-white);
+}
+
+:root[data-message-bubble="blue"] [data-user-message-bubble] .chat-markdown a:not(.chat-markdown-file-link) {
+  text-decoration: underline;
+}
+
+.chat-markdown {
+  --chat-code-surface: var(--chat-code-background);
+}
+
+.chat-markdown.user-message-markdown {
+  --chat-code-surface: var(--chat-code-message-background);
+}
+
+.chat-markdown :is(pre, :not(pre) > code),
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock {
+  --chat-code-text: light-dark(var(--color-zinc-900), var(--color-neutral-100));
+  --chat-code-border: color-mix(
+    in oklab,
+    var(--chat-code-surface, var(--chat-code-background)),
+    var(--chat-code-text) var(--chat-code-border-mix)
+  );
+  border-color: var(--chat-code-border);
+  background-color: var(--chat-code-surface, var(--chat-code-background));
+}
+
+/* A custom color names the scheme its text reads in (lib/displayPrefs.ts): the surface takes it,
+   and with it its text, the light-dark() syntax colors and the header's buttons. Presets keep
+   the theme's scheme. */
+:root[data-chat-code-scheme="light"]
+  :is(.chat-markdown :is(pre, :not(pre) > code), .chat-markdown-codeblock) {
+  color-scheme: light;
+}
+
+:root[data-chat-code-scheme="dark"]
+  :is(.chat-markdown :is(pre, :not(pre) > code), .chat-markdown-codeblock) {
+  color-scheme: dark;
+}
+
+:root[data-chat-code-scheme] .chat-markdown-codeblock-header {
+  --contrast-foreground: var(--chat-code-text);
+  --contrast-muted-foreground: color-mix(in srgb, var(--chat-code-text) 62%, transparent);
+  --contrast-secondary-foreground: var(--chat-code-text);
+  --secondary: color-mix(in srgb, var(--chat-code-text) 8%, transparent);
+  --accent: color-mix(in srgb, var(--chat-code-text) 10%, transparent);
+}
+
+.chat-markdown :not(pre) > code {
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 0.25rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0.1em 0.35em;
+  color: var(--chat-code-text);
+  /* The monospace font (Settings, Appearance: Monospace font, --font-mono here), at the size of the
+     text around it unless the inline code size is set (--chat-inline-code-ratio). */
+  font-family: var(--font-mono);
+  font-size: calc(1em * var(--chat-inline-code-ratio, 1));
+}
+
+.chat-markdown strong {
+  font-weight: 700;
+}
+
+.chat-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 0.5rem;
+  padding: 0.8rem 0.9rem;
+  color: color-mix(in srgb, var(--chat-code-text) 90%, transparent);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--chat-code-border) 78%, transparent) transparent;
+}
+
+.chat-markdown pre code {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.chat-markdown pre::-webkit-scrollbar {
+  height: var(--app-scrollbar-width);
+}
+
+.chat-markdown pre::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chat-code-border) 78%, transparent);
+}
+
+/* The frame carries the code's text color (90%, as chat prose); its pre inherits it. */
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock {
+  color: color-mix(in srgb, var(--chat-code-text) 90%, transparent);
+}
+
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock-header {
+  color: color-mix(in srgb, var(--chat-code-text) 72%, transparent);
+}
+
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock pre {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+}
+
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-codeblock[data-wrap="true"] pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+:is(.chat-markdown, .composer-tiptap) .chat-markdown-shiki :is(.shiki, .diffs) {
+  background: transparent !important;
+}
+
+/* Plain-text fences override the highlighter's inline foreground colors with the frame's. */
+:is(.chat-markdown, .composer-tiptap)
+  .chat-markdown-codeblock:is(
+    [data-language="text" i],
+    [data-language="txt" i],
+    [data-language="plain" i],
+    [data-language="plaintext" i]
+  )
+  :is(pre, pre *) {
+  color: inherit !important;
+}
+
+/* Paragraphs and code blocks arrive in chunks while a response streams. Fade
+   each new block in so the chunk does not pop. @starting-style only applies
+   when an element is first inserted, and the rule is gated on data-streaming,
+   so opening a finished thread never replays the fade. Opacity only, one
+   shot, no layout change. */
+@media (prefers-reduced-motion: no-preference) {
+  .chat-markdown[data-streaming] > *,
+  .chat-markdown[data-streaming] .chat-markdown-shiki,
+  .chat-markdown[data-streaming] .chat-markdown-mermaid {
+    transition: opacity 600ms ease-out;
+
+    @starting-style {
+      opacity: 0;
+    }
+  }
+}
+
+/* Mermaid diagrams (Pele, DESIGN.md 7g). Pele colors the drawn SVG through --pele-* variables, so
+   they point at the theme's tokens: a theme or Settings color change recolors a drawn diagram in
+   place, with no new draw. The canvas stays transparent, and node fills are the foreground
+   mixed into the background. */
+.chat-markdown-mermaid {
+  --pele-bg: transparent;
+  --pele-fg: var(--foreground);
+  --pele-muted: var(--muted-foreground);
+  --pele-line: color-mix(in srgb, var(--foreground) 60%, var(--background));
+  --pele-surface: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  --pele-surface-alt: color-mix(in srgb, var(--foreground) 12%, var(--background));
+  --pele-border: color-mix(in srgb, var(--foreground) 35%, var(--background));
+  --pele-accent: var(--primary);
+  --pele-critical: var(--error);
+  --pele-font: var(--font-sans);
+  --pele-font-mono: var(--font-mono);
+  --pele-radius: 6px;
+  --pele-series-1: oklch(0.68 0.15 255);
+  --pele-series-2: oklch(0.7 0.15 160);
+  --pele-series-3: oklch(0.78 0.15 80);
+  --pele-series-4: oklch(0.68 0.18 20);
+  --pele-series-5: oklch(0.68 0.16 300);
+  --pele-series-6: oklch(0.74 0.12 210);
+  --pele-series-7: oklch(0.72 0.16 50);
+  --pele-series-8: oklch(0.76 0.16 125);
+}
+
+/* Diagnostics-style tables: row separators only, and a scroll-fade container
+   for horizontal overflow. Cells wrap and the table fits its lane. The root
+   chat-markdown wrapping rules (overflow-wrap: anywhere) would let columns
+   shrink to single characters, so restore word-boundary wrapping: the min
+   column width is the longest word, and only wider content scrolls. */
+.chat-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow-wrap: normal;
+  word-break: normal;
+  /* One step under 15px prose. */
+  font-size: calc(0.875rem * var(--chat-text-scale, 1));
+}
+
+/* Top-aligned so wrapped rows share a first line, and the outer columns sit
+   flush with the surrounding prose. */
+.chat-markdown th,
+.chat-markdown td {
+  padding: 0.45rem 0.75rem;
+  text-wrap: pretty;
+  text-align: start;
+  vertical-align: top;
+}
+
+.chat-markdown :is(th, td):first-child {
+  padding-inline-start: 0;
+}
+
+.chat-markdown :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.chat-markdown thead th {
+  border-bottom: 1px solid color-mix(in srgb, var(--contrast-border) 60%, transparent);
+  padding-block: 0.55rem;
+  font-weight: 600;
+}
+
+.chat-markdown tbody td {
+  border-bottom: 1px solid color-mix(in srgb, var(--contrast-border) 60%, transparent);
+}
+
+/* Caps a long path, URL, or chip at 24rem; text past the cap wraps. */
+.chat-markdown :is(th, td) {
+  max-width: 24rem;
+  overflow-wrap: break-word;
+}
+
+/* Formula cells keep their natural width and scroll with the table. */
+.chat-markdown :is(th, td):has([data-markdown-math]) {
+  max-width: none;
+}
+
+/* Keep overflow discoverable when the edge fade falls between columns. */
+.chat-markdown
+  .chat-markdown-table-container
+  [data-slot="scroll-area-scrollbar"][data-orientation="horizontal"] {
+  opacity: 1;
+  --app-scrollbar-thumb: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  --app-scrollbar-thumb-hover: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+}
+
+/* Local change: the chat code surfaces that take a custom color's own scheme (the chat code
+   surfaces above) declare these colors again, so they resolve in that scheme: the build turns
+   light-dark() into variables that resolve where the property is declared, here the root. */
+:root,
+:root[data-chat-code-scheme]
+  :is(.chat-markdown :is(pre, :not(pre) > code), .chat-markdown-codeblock) {
+  --diff-addition-foreground: light-dark(var(--theme-light-success-foreground), var(--color-emerald-400));
+  --diff-deletion-foreground: light-dark(var(--theme-light-error-foreground), var(--color-red-400));
+}
+
+/* Local change: T3 takes these from --success and --destructive. The light diff takes the theme
+   source's calmer success and error (2026-11-17, as the rest of the light accents); the dark one
+   keeps the 500 tints its --syntax-* colors were tuned on. */
+:root {
+  --diff-addition: var(--theme-light-success);
+  --diff-deletion: var(--theme-light-error);
+
+  @variant dark {
+    --diff-addition: var(--color-emerald-500);
+    --diff-deletion: var(--destructive);
+  }
+}
+
+/* Local change: syntax colors for code blocks and tool details (components/chat/SyntaxHighlight.tsx).
+   T3's pierre-dark and pierre-light hues, each moved only as far as 4.5:1 needs: dark against the
+   brightest dark code surface (code in a user bubble, luminance 0.025 with margin), light against
+   the darkest light one (a tinted diff row, 0.82). Dark comment and function are lightened;
+   most light colors are darkened, as T3's t3-light does. Declared again on the chat code surfaces
+   with a custom color's own scheme, as the diff colors above. */
+:root,
+:root[data-chat-code-scheme]
+  :is(.chat-markdown :is(pre, :not(pre) > code), .chat-markdown-codeblock) {
+  --syntax-comment: light-dark(#696969, #969696);
+  --syntax-keyword: light-dark(#c12659, #ff678d);
+  --syntax-string: light-dark(#137931, #5ecc71);
+  --syntax-number: light-dark(#12718d, #68cdf2);
+  --syntax-function: light-dark(#693acf, #a87bfb);
+  --syntax-type: light-dark(#a631be, #d568ea);
+  --syntax-variable: light-dark(#9c561a, #ffa359);
+  --syntax-property: light-dark(#9c561a, #ffa359);
+  --syntax-attribute: light-dark(#11784e, #60d199);
+  --syntax-tag: light-dark(#b34327, #ff855e);
+  --syntax-regexp: light-dark(#0f737b, #64d1db);
+  --syntax-meta: light-dark(#146aaa, #69b1ff);
+  --syntax-heading: light-dark(#b34327, #ff855e);
+  --syntax-inserted: var(--diff-addition-foreground);
+  --syntax-deleted: var(--diff-deletion-foreground);
+}
+
+/* The size slider of the settings screen's session management filter (components/settings/manage):
+   two range inputs over one track. Only the thumbs take the pointer. */
+.range-thumbs {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  pointer-events: none;
+}
+.range-thumbs::-webkit-slider-runnable-track {
+  height: 3px;
+  background: transparent;
+}
+.range-thumbs::-webkit-slider-thumb {
+  width: 13px;
+  height: 13px;
+  margin-top: -5px;
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  background: var(--background);
+  appearance: none;
+  -webkit-appearance: none;
+  pointer-events: auto;
+  cursor: grab;
+}
+.range-thumbs::-moz-range-track {
+  height: 3px;
+  background: transparent;
+}
+.range-thumbs::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  background: var(--background);
+  pointer-events: auto;
+  cursor: grab;
+}
+.range-thumbs:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Conversation text size (Settings, Appearance; the size is in pt, and lib/displayPrefs.ts sets its factor
+   over the 14pt the theme's text-sm is on the root as --chat-text-scale-setting; the root font
+   size, the UI scale, multiplies it again). Inside the conversation (ThreadView marks it data-chat-text) the
+   theme's text sizes, which the text-* utilities read as variables, take the factor, and so do
+   the chat markdown sizes above through --chat-text-scale. Outside it --chat-text-scale is unset
+   and every size stays as it is. The line heights are ratios and follow the sizes. */
+[data-chat-text] {
+  --chat-text-scale: var(--chat-text-scale-setting, 1);
+  /* The chat code text size against the conversation's (the code block above, inline code and
+     tool output read it): its own factor when set, else the conversation's, so the ratio is 1. */
+  --chat-code-ratio: calc(var(--chat-code-scale-setting, var(--chat-text-scale)) / var(--chat-text-scale));
+  /* The inline code's size against the conversation's: its own factor when set, else 1. */
+  --chat-inline-code-ratio: calc(var(--chat-inline-code-scale-setting, var(--chat-text-scale)) / var(--chat-text-scale));
+  --text-5xs: calc(0.4375rem * var(--chat-text-scale));
+  --text-4xs: calc(0.5rem * var(--chat-text-scale));
+  --text-3xs: calc(0.625rem * var(--chat-text-scale));
+  --text-2xs: calc(0.6875rem * var(--chat-text-scale));
+  --text-xs: calc(0.75rem * var(--chat-text-scale));
+  --text-sm: calc(0.875rem * var(--chat-text-scale));
+  --text-base: calc(1rem * var(--chat-text-scale));
+  --text-lg: calc(1.125rem * var(--chat-text-scale));
+  --text-xl: calc(1.25rem * var(--chat-text-scale));
+  --text-2xl: calc(1.5rem * var(--chat-text-scale));
+  --text-3xl: calc(1.875rem * var(--chat-text-scale));
+}
+
+/* A child row of an expanded tool group (chat/WorkLog.tsx) recedes below the group's summary line:
+   its line (icon and label) takes this opacity until the row is hovered, focused or opened.
+   Dark: the first 5% step that keeps the dimmed label at 4.5:1 on the canvas (8.13:1 becomes
+   4.81:1; 0.7 gave 4.28:1). Light: the label starts at 4.71:1, so any dimming goes under 4.5:1;
+   0.85 keeps 3.53:1. */
+:root {
+  --work-group-entry-opacity: 0.85;
+
+  @variant dark {
+    --work-group-entry-opacity: 0.75;
+  }
+}
+
+/* Area zoom of the sidebar and the right panel (Ctrl+wheel over the area, Settings, Appearance;
+   lib/areaZoom.ts sets --area-zoom on the area's element). Inside, the theme's text sizes and the
+   spacing step, which the text-* and spacing utilities read as variables, take the factor, and so
+   do chat markdown's sizes (a Markdown file preview) through --chat-text-scale. The root font size
+   (UI scale) stays, so layout, pointer coordinates and popups outside the area are untouched. */
+[data-area-zoom] {
+  --chat-text-scale: var(--area-zoom, 1);
+  --spacing: calc(0.25rem * var(--area-zoom, 1));
+  --text-5xs: calc(0.4375rem * var(--area-zoom, 1));
+  --text-4xs: calc(0.5rem * var(--area-zoom, 1));
+  --text-3xs: calc(0.625rem * var(--area-zoom, 1));
+  --text-2xs: calc(0.6875rem * var(--area-zoom, 1));
+  --text-xs: calc(0.75rem * var(--area-zoom, 1));
+  --text-sm: calc(0.875rem * var(--area-zoom, 1));
+  --text-base: calc(1rem * var(--area-zoom, 1));
+  --text-lg: calc(1.125rem * var(--area-zoom, 1));
+  --text-xl: calc(1.25rem * var(--area-zoom, 1));
+  --text-2xl: calc(1.5rem * var(--area-zoom, 1));
+  --text-3xl: calc(1.875rem * var(--area-zoom, 1));
+}
+
+/* The zoom mark keeps the page's sizes inside a zoomed area (the conversation's text size too). */
+[data-zoom-indicator] {
+  --spacing: 0.25rem;
+  --text-xs: 0.75rem;
+}
+
+:root[data-diff-color-scheme="blue-orange"] {
+  --diff-addition: light-dark(var(--color-blue-600), var(--color-blue-400));
+  --diff-deletion: light-dark(var(--color-orange-600), var(--color-orange-400));
+  --diff-addition-foreground: var(--diff-addition);
+  --diff-deletion-foreground: var(--diff-deletion);
+  --diffs-addition-color-override: var(--diff-addition);
+  --diffs-deletion-color-override: var(--diff-deletion);
+  --trees-status-added-override: var(--diff-addition);
+  --trees-status-deleted-override: var(--diff-deletion);
+  --trees-status-untracked-override: var(--diff-addition);
+  --trees-git-added-color-override: var(--diff-addition);
+  --trees-git-deleted-color-override: var(--diff-deletion);
+  --trees-git-untracked-color-override: var(--diff-addition);
+}
+
+@layer components {
+  .chat-composer-lane {
+    padding-inline-start: calc(
+      env(safe-area-inset-left) + 0.75rem + var(--chat-lane-inset-start, 0px)
+    );
+    padding-inline-end: calc(
+      env(safe-area-inset-right) + 0.75rem + var(--chat-lane-inset-end, 0px)
+    );
+  }
+  [data-chat-canvas] .messages-timeline-scroll {
+    padding-inline-start: calc(
+      0.75rem + var(--chat-lane-inset-start, 0px) - var(--chat-timeline-gutter, 0px)
+    );
+    padding-inline-end: calc(
+      0.75rem + var(--chat-lane-inset-end, 0px) - var(--chat-timeline-gutter, 0px)
+    );
+  }
+  .chat-scroll-to-bottom,
+  .chat-banner-lane {
+    inset-inline-start: var(--chat-lane-inset-start, 0px);
+    inset-inline-end: var(--chat-lane-inset-end, 0px);
+  }
+  @media (min-width: 640px) {
+    .chat-composer-lane {
+      padding-inline-start: calc(
+        env(safe-area-inset-left) + 3rem + var(--chat-lane-inset-start, 0px)
+      );
+      padding-inline-end: calc(env(safe-area-inset-right) + 3rem + var(--chat-lane-inset-end, 0px));
+    }
+    [data-chat-canvas] .messages-timeline-scroll {
+      padding-inline-start: calc(
+        3rem + var(--chat-lane-inset-start, 0px) - var(--chat-timeline-gutter, 0px)
+      );
+      padding-inline-end: calc(
+        3rem + var(--chat-lane-inset-end, 0px) - var(--chat-timeline-gutter, 0px)
+      );
+    }
+  }
+}
+
+.messages-timeline-scroll:focus-visible {
+  outline: none;
+}
+
+/* Terminal mode (DESIGN.md 6i). Colors are Claude Code 2.1.325's dark theme as measured from tmux
+   captures of the user's setup (truecolor), on the user's iTerm dark profile background and
+   foreground (#15191f, #dcdcdc). The web copy of Bon Google Sans Code ("Maru Bon Google Sans Code")
+   is declared at run time from the font CDN setting (lib/bonFont.ts). */
+
+@layer components {
+  /* Colors as the user's iTerm shows Claude Code (DESIGN.md 6i, iTerm 테마):
+     - The profile's own colors (sRGB in the plist): background, foreground, bold, cursor,
+       selection, link.
+     - Claude Code's theme colors: the CLI runs inside tmux, where it lowers itself to 256 colors,
+       and iTerm draws those xterm colors in Display P3 (its default). The comment names the xterm
+       index; the hex is the sRGB fallback (P3 clipped to sRGB) and @supports below gives the P3
+       value. Grays are the same in both spaces. */
+  .term-root {
+    /* The user's value; the plist's components (0.080688, 0.099111, 0.121033) round to #15191f. */
+    --term-bg: #14191e;
+    --term-fg: #dcdcdc;
+    --term-bold: #ffffff;
+    --term-fg-strong: #ffffff;
+    --term-cursor: #ffffff;
+    --term-selection-bg: #b3d7ff;
+    --term-selection-fg: #000000;
+    --term-link: #328eee;
+    --term-dim: #949494; /* 246 inactive */
+    --term-rule: #808080; /* 244 */
+    --term-subtle: #4e4e4e; /* 239 */
+    --term-user-bg: #3a3a3a; /* 237 */
+    --term-code: #ffffff; /* 231 */
+    --term-code-faint: #8a8c8e; /* 231 with iTerm's faint alpha 0.5 */
+    --term-claude: #e48285; /* 174 */
+    --term-shimmer: #ffab7f; /* 216 */
+    --term-ok: #6ada7e; /* 114 */
+    --term-err: #ff7eb0; /* 211 */
+    --term-warn: #ffd500; /* 220 */
+    --term-accent: #a4d8ff; /* 153 */
+    --term-plan: #3bb1b0; /* 73 */
+    --term-accept: #afafff; /* 147 */
+    --term-del-fg: #e8555a; /* 167 */
+    --term-del-bg: #690000; /* 52 */
+    --term-add-fg: #00da4b; /* 77 */
+    --term-add-bg: #006100; /* 22 */
+    /* One cell of the iTerm grid; TerminalView sets the profile formula's px (lib/viewMode.ts). */
+    --term-cell: 1ch;
+    position: relative;
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    background: var(--term-bg);
+    color: var(--term-fg);
+    font-family: var(--term-font);
+    font-size: var(--term-font-size, 15px);
+    line-height: var(--term-line-height, 1.212);
+    letter-spacing: var(--term-letter-spacing, 0);
+    font-variant-ligatures: none;
+    font-feature-settings: "liga" 0, "calt" 0;
+    color-scheme: dark;
+  }
+  /* iTerm draws bold text of the default color in the profile's bold color. */
+  .term-root b,
+  .term-root .term-md-h,
+  .term-root .term-md-h1 {
+    font-weight: 700;
+    color: var(--term-bold);
+  }
+  /* Bold inside colored text keeps that color; a bold that names its own color class keeps it. */
+  .term-root :is(.term-dim, .term-group, .term-err, .term-warn, .term-ok, .term-accent, .term-plan, .term-claude) b:not([class]) {
+    color: inherit;
+  }
+  .term-root ::selection {
+    background: var(--term-selection-bg);
+    color: var(--term-selection-fg);
+  }
+  .term-scroll {
+    position: relative;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* The profile's window margins (iTerm TerminalMargin 10, TerminalVMargin 3, in pt = CSS px). */
+    padding: 3px 10px 0;
+  }
+  .term-probe {
+    position: absolute;
+    visibility: hidden;
+    white-space: pre;
+    pointer-events: none;
+  }
+  .term-screen {
+    overflow-wrap: anywhere;
+  }
+  /* The CLI leaves one empty line between blocks; a time stamp sits right on its answer. */
+  .term-block + .term-block {
+    margin-top: 1lh;
+  }
+  .term-block[data-term-block="stamp"] + .term-block {
+    margin-top: 0;
+  }
+  .term-bulleted {
+    display: grid;
+    grid-template-columns: calc(2 * var(--term-cell)) minmax(0, 1fr);
+  }
+  .term-bullet,
+  .term-elbow {
+    white-space: pre;
+  }
+  .term-result {
+    display: grid;
+    grid-template-columns: calc(5 * var(--term-cell)) minmax(0, 1fr);
+  }
+  .term-result-body > div {
+    white-space: pre-wrap;
+  }
+  .term-user {
+    display: grid;
+    grid-template-columns: calc(2 * var(--term-cell)) minmax(0, 1fr);
+    background: var(--term-user-bg);
+    color: var(--term-fg-strong);
+  }
+  .term-user-prompt {
+    color: var(--term-dim);
+    white-space: pre;
+  }
+  /* A message that waits for the model (DESIGN.md 4.4): the CLI draws it on the user line's background in 246. */
+  .term-user.term-user-queued {
+    color: var(--term-dim);
+  }
+  .term-dim {
+    color: var(--term-dim);
+  }
+  .term-fg {
+    color: var(--term-fg);
+  }
+  .term-fg-strong {
+    color: var(--term-fg-strong);
+  }
+  .term-ok {
+    color: var(--term-ok);
+  }
+  .term-err {
+    color: var(--term-err);
+  }
+  .term-warn {
+    color: var(--term-warn);
+  }
+  .term-accent {
+    color: var(--term-accent);
+  }
+  .term-claude {
+    color: var(--term-claude);
+  }
+  .term-claude-shimmer {
+    color: var(--term-claude);
+    animation: term-shimmer 2s ease-in-out infinite;
+  }
+  .term-bold {
+    font-weight: 700;
+  }
+  .term-strike {
+    text-decoration: line-through;
+  }
+  .term-pre-wrap {
+    white-space: pre-wrap;
+  }
+  .term-indent2 {
+    padding-inline-start: calc(2 * var(--term-cell));
+  }
+  .term-blink {
+    animation: term-blink 1s steps(2, jump-none) infinite;
+  }
+  .term-code {
+    color: var(--term-code);
+  }
+  /* Terminal "dim" is reduced intensity of the same color. */
+  .term-lineno {
+    color: var(--term-code-faint);
+    white-space: pre;
+  }
+  .term-diff-del,
+  .term-diff-add {
+    white-space: pre-wrap;
+  }
+  .term-diff-del {
+    background: var(--term-del-bg);
+  }
+  .term-diff-add {
+    background: var(--term-add-bg);
+  }
+  .term-diff-mark {
+    white-space: pre;
+  }
+  .term-diff-del .term-diff-mark {
+    color: var(--term-del-fg);
+  }
+  .term-diff-add .term-diff-mark {
+    color: var(--term-add-fg);
+  }
+  .term-stamp {
+    text-align: right;
+  }
+  .term-thinking {
+    color: var(--term-dim);
+    font-style: italic;
+  }
+  .term-group,
+  .term-bg-hint,
+  .term-link-row,
+  .term-path {
+    all: unset;
+    cursor: pointer;
+  }
+  /* "(ctrl+b to run in background)" under a running Bash or Agent call: the CLI's progress hint,
+     indented 5 cells (PILL_INDENT_COLUMNS in the 2.1.325 bundle), dim. */
+  .term-bg-hint {
+    display: block;
+    padding-inline-start: calc(5 * var(--term-cell));
+    color: var(--term-dim);
+    white-space: pre-wrap;
+  }
+  .term-bg-hint:hover,
+  .term-bg-hint:focus-visible {
+    color: var(--term-fg);
+  }
+  .term-bg-hint:focus-visible {
+    outline: 1px solid var(--term-accent);
+    outline-offset: 1px;
+  }
+  .term-group {
+    display: block;
+    padding-inline-start: calc(2 * var(--term-cell));
+    color: var(--term-dim);
+    white-space: pre-wrap;
+  }
+  .term-group:hover,
+  .term-group:focus-visible {
+    color: var(--term-fg);
+  }
+  .term-link-row:hover,
+  .term-path:hover {
+    text-decoration: underline;
+  }
+  /* iTerm underlines a link under the pointer in the profile's link color. */
+  .term-path:hover {
+    color: var(--term-link);
+  }
+  .term-group:focus-visible,
+  .term-link-row:focus-visible,
+  .term-path:focus-visible {
+    outline: 1px solid var(--term-accent);
+    outline-offset: 1px;
+  }
+  .term-history {
+    margin-bottom: 1lh;
+    text-align: center;
+  }
+  .term-md > * + * {
+    margin-top: 1lh;
+  }
+  .term-md li > * + * {
+    margin-top: 0;
+  }
+  .term-md-h1 {
+    font-weight: 700;
+    font-style: italic;
+    text-decoration: underline;
+  }
+  .term-md-h {
+    font-weight: 700;
+  }
+  .term-md-code {
+    color: var(--term-accent);
+  }
+  .term-md-pre,
+  .term-md-table {
+    margin: 0;
+    font: inherit;
+  }
+  .term-md-pre {
+    white-space: pre-wrap;
+  }
+  .term-md-table {
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .term-md-quote {
+    border-inline-start: calc(0.25 * var(--term-cell)) solid var(--term-dim);
+    padding-inline-start: calc(1.75 * var(--term-cell));
+    font-style: italic;
+  }
+  .term-md ul,
+  .term-md ol {
+    margin: 0;
+  }
+  .term-md ul {
+    list-style: "- " outside;
+    padding-inline-start: calc(2 * var(--term-cell));
+  }
+  .term-md ol {
+    list-style: decimal outside;
+    padding-inline-start: calc(3 * var(--term-cell));
+  }
+  .term-md-link {
+    color: inherit;
+    text-decoration: none;
+  }
+  .term-md-link:hover {
+    color: var(--term-link);
+    text-decoration: underline;
+  }
+  .term-md-hr {
+    border-top: 1px solid var(--term-subtle);
+  }
+  /* A rule is one text row with a line through its middle, as "─" cells draw it. */
+  .term-rule {
+    --term-rule-color: var(--term-rule);
+    height: 1lh;
+    background: linear-gradient(var(--term-rule-color), var(--term-rule-color)) center / 100% 1px no-repeat;
+  }
+  .term-rule.term-dim {
+    --term-rule-color: var(--term-dim);
+  }
+  .term-rule.term-accent {
+    --term-rule-color: var(--term-accent);
+  }
+  .term-rule.term-plan {
+    --term-rule-color: var(--term-plan);
+  }
+  .term-plan {
+    color: var(--term-plan);
+  }
+  /* A rejected plan sits in the CLI's rounded plan-colored box (borderStyle round, paddingX 1). */
+  .term-plan-box {
+    border: 1px solid var(--term-plan);
+    border-radius: calc(0.5 * var(--term-cell));
+    padding: 0 calc(var(--term-cell) - 1px);
+  }
+  .term-dashed {
+    margin: calc(0.5lh - 0.5px) 0;
+    border-top: 1px dashed var(--term-subtle);
+  }
+  .term-composer {
+    flex: none;
+    padding: 0 10px max(3px, env(safe-area-inset-bottom));
+  }
+  .term-input-row {
+    display: grid;
+    grid-template-columns: calc(2 * var(--term-cell)) minmax(0, 1fr) auto;
+  }
+  .term-prompt {
+    white-space: pre;
+  }
+  .term-textarea {
+    all: unset;
+    display: block;
+    max-height: 40vh;
+    overflow-y: auto;
+    resize: none;
+    color: var(--term-fg);
+    font: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    /* The profile's cursor: a white bar that does not blink. */
+    caret-color: var(--term-cursor);
+  }
+  .term-textarea::placeholder {
+    color: var(--term-dim);
+  }
+  .term-textarea:disabled {
+    cursor: not-allowed;
+  }
+  .term-footer {
+    padding-inline-start: calc(2 * var(--term-cell));
+  }
+  .term-footer-row {
+    display: flex;
+    align-items: baseline;
+  }
+  /* The Codex goal indicator: the TUI draws it magenta at the right end of the footer (footer.rs). */
+  .term-goal {
+    margin-inline-start: auto;
+    padding-inline-start: calc(2 * var(--term-cell));
+    padding-inline-end: calc(2 * var(--term-cell));
+    color: var(--term-accept);
+    white-space: pre;
+  }
+  .term-mode-bypass {
+    color: var(--term-err);
+  }
+  .term-mode-accept {
+    color: var(--term-accept);
+  }
+  .term-mode-plan {
+    color: var(--term-plan);
+  }
+  .term-mode-manual {
+    color: var(--term-dim);
+  }
+  .term-menu-row {
+    display: grid;
+    grid-template-columns: minmax(0, calc(39 * var(--term-cell))) minmax(0, 1fr);
+    cursor: pointer;
+    padding-inline-start: calc(2 * var(--term-cell));
+  }
+  .term-menu-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+  }
+  /* One line per command (descriptions are cut, not wrapped), so the menu never outgrows its rows. */
+  .term-menu-desc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+  }
+  .term-menu-status {
+    padding-inline-start: calc(2 * var(--term-cell));
+  }
+  /* The session picker (TerminalSessionPicker.tsx): a long model list scrolls instead of pushing the input down. */
+  .term-picker-rows {
+    max-height: min(12lh, 40vh);
+    overflow-y: auto;
+  }
+  .term-picker-arrow {
+    padding-inline: calc(0.5 * var(--term-cell));
+  }
+  @media (pointer: coarse) {
+    .term-picker-arrow {
+      padding: 0.25lh var(--term-cell);
+    }
+  }
+  /* The CLI's three columns; a screen too narrow for them moves the last ones under the first. */
+  .term-help {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: calc(4 * var(--term-cell));
+    padding-inline-start: calc(2 * var(--term-cell));
+    white-space: pre;
+  }
+  .term-pending {
+    outline: none;
+  }
+  .term-chip {
+    background: var(--term-accent);
+    /* The terminal theme sets --term-chip-fg (lib/terminalTheme.ts); the default is black. */
+    color: var(--term-chip-fg, #000000);
+  }
+  .term-question {
+    margin: 1lh 0;
+    color: var(--term-fg-strong);
+    font-weight: 700;
+  }
+  .term-choice {
+    cursor: pointer;
+    white-space: pre-wrap;
+  }
+  .term-choice-desc {
+    padding-inline-start: calc(5 * var(--term-cell));
+  }
+  .term-inline-input {
+    all: unset;
+    min-width: calc(24 * var(--term-cell));
+    color: var(--term-accent);
+    font: inherit;
+  }
+  .term-inline-input::placeholder {
+    color: var(--term-dim);
+  }
+  .term-hint {
+    margin-top: 1lh;
+  }
+  .term-verbose-bar {
+    display: flex;
+    flex: none;
+    justify-content: space-between;
+    padding: 0 calc(3 * var(--term-cell)) 0 calc(3 * var(--term-cell));
+    border-top: 1px solid var(--term-rule);
+  }
+  .term-sending {
+    padding-inline-start: var(--term-cell);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .term-blink,
+    .term-claude-shimmer {
+      animation: none;
+    }
+  }
+}
+
+@keyframes term-blink {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes term-shimmer {
+  0%,
+  100% {
+    color: var(--term-claude);
+  }
+  50% {
+    color: var(--term-shimmer);
+  }
+}
+
+@layer components {
+  /* Measured: user text wraps one cell before the edge; the stamp ends 8 cells before it; an
+     interrupt line sits right under what it stopped. */
+  .term-user {
+    padding-inline-end: var(--term-cell);
+  }
+  .term-stamp {
+    padding-inline-end: calc(8 * var(--term-cell));
+  }
+  .term-block[data-term-block="interrupted"] {
+    margin-top: 0;
+  }
+  .term-head {
+    display: flex;
+  }
+  .term-head > b {
+    flex: none;
+  }
+  .term-args {
+    min-width: 0;
+    white-space: pre-wrap;
+  }
+  .term-md-li {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .term-md-marker {
+    white-space: pre;
+  }
+  .term-md-li > div > * + * {
+    margin-top: 1lh;
+  }
+}
+
+@layer components {
+  /* Markdown inside a pre-wrap row keeps HTML whitespace rules; only code and tables keep lines. */
+  .term-root .term-md {
+    white-space: normal;
+  }
+  .term-root .term-md-pre {
+    white-space: pre-wrap;
+  }
+  .term-root .term-md-table {
+    white-space: pre;
+  }
+  .term-root .term-md-records {
+    white-space: pre-wrap;
+  }
+  .term-root .term-md > * + *,
+  .term-root .term-md-li > div > * + * {
+    margin-top: 1lh;
+  }
+  .term-root .term-md > .term-tight,
+  .term-root .term-md-li > div > .term-tight {
+    margin-top: 0;
+  }
+  /* Command output hangs right under its command (measured: "❯ /context" then "⎿  Context Usage"). */
+  .term-block[data-term-block="command-output"] {
+    margin-top: 0;
+  }
+  /* The CLI breaks a long path anywhere to fill the line. */
+  .term-path {
+    word-break: break-all;
+  }
+}
+
+@layer components {
+  /* The xterm colors in Display P3, as iTerm draws them (see the .term-root tokens). Screens that
+     cannot show P3 clip them, as iTerm would on such a screen. */
+  @supports (color: color(display-p3 0 0 0)) {
+    .term-root {
+      --term-claude: color(display-p3 0.8431 0.5294 0.5294);
+      --term-shimmer: color(display-p3 1 0.6863 0.5294);
+      --term-ok: color(display-p3 0.5294 0.8431 0.5294);
+      --term-err: color(display-p3 1 0.5294 0.6863);
+      --term-warn: color(display-p3 1 0.8431 0);
+      --term-accent: color(display-p3 0.6863 0.8431 1);
+      --term-plan: color(display-p3 0.3725 0.6863 0.6863);
+      --term-accept: color(display-p3 0.6863 0.6863 1);
+      --term-del-fg: color(display-p3 0.8431 0.3725 0.3725);
+      --term-del-bg: color(display-p3 0.3725 0 0);
+      --term-add-fg: color(display-p3 0.3725 0.8431 0.3725);
+      --term-add-bg: color(display-p3 0 0.3725 0);
+      --term-code-faint: color(display-p3 0.5427 0.5472 0.5546);
+    }
+  }
+  /* The agent panel under the footer (measured): one row each, the time right-aligned two cells in. */
+  .term-task {
+    display: flex;
+    cursor: pointer;
+    white-space: pre;
+  }
+  .term-task-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .term-task-right {
+    flex: none;
+    margin-inline-start: auto;
+    padding-inline: calc(2 * var(--term-cell));
+  }
+  /* "◉ xhigh  /effort" over the input's top rule, right-aligned two cells in (measured). */
+  .term-effort {
+    padding-inline-end: calc(2 * var(--term-cell));
+    text-align: right;
+  }
+  /* Waiting attachments over the top rule, one line each, aligned with the prompt text (DESIGN.md 6n). */
+  .term-attachments {
+    padding-inline-start: calc(2 * var(--term-cell));
+  }
+  .term-attachment {
+    display: flex;
+    min-width: 0;
+    white-space: pre;
+  }
+  .term-attachment-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--term-fg);
+  }
+  .term-sent-attachments {
+    grid-column: 2;
+  }
+  /* Files over the terminal input: the frame shows where they go. */
+  .term-composer-drop {
+    outline: 1px dashed var(--term-accent);
+    outline-offset: -1px;
+  }
+  /* The rewind screen (TerminalRewind.tsx, CLI capture at 120 columns): a "▔" rule (the top
+     eighth of a row) in the suggestion color across the screen, then the body three cells in. */
+  .term-rewind {
+    outline: none;
+  }
+  .term-rewind-top {
+    height: 1lh;
+    background: linear-gradient(var(--term-accent), var(--term-accent)) top / 100% calc(1lh / 8) no-repeat;
+  }
+  .term-rewind-body {
+    padding-inline-start: calc(3 * var(--term-cell));
+  }
+  .term-rewind-gap,
+  .term-rewind-list,
+  .term-rewind-guide,
+  .term-rewind-item + .term-rewind-item {
+    margin-top: 1lh;
+  }
+  .term-rewind-list {
+    max-height: min(24lh, 50vh);
+    overflow-y: auto;
+  }
+  .term-rewind-item {
+    cursor: pointer;
+  }
+  .term-rewind-row {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+  }
+  .term-rewind-quote {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  /* The CLI's dimColor (faint) bar. */
+  .term-rewind-bar {
+    opacity: 0.5;
+  }
+  /* "+N" in the CLI's fR: xterm index 72 drawn in Display P3 as iTerm does; the hex is that color
+     in sRGB, the same rule as the .term-root tokens (174 gives their #e48285). */
+  .term-rewind-add {
+    color: var(--term-rewind-add, #3bb184);
+  }
+  @supports (color: color(display-p3 0 0 0)) {
+    .term-rewind-add {
+      color: var(--term-rewind-add, color(display-p3 0.3725 0.6863 0.5294));
+    }
+  }
+  .term-italic {
+    font-style: italic;
+  }
+}
+
+@layer components {
+  /* Spaces are cells: two-space separators stay two (markdown resets this, see .term-md). */
+  .term-root {
+    white-space: pre-wrap;
+  }
+}
+
+/* Find in a thread (DESIGN.md 6u, T3 index.css): painted ranges, so the markdown and copied text stay as they are. */
+::highlight(maru-thread-find) {
+  color: oklch(0.216164 0.028283 77.423);
+  background-color: oklch(0.915 0.11 85);
+
+  @variant dark {
+    color: oklch(0.970151 0 0);
+    background-color: oklch(0.55 0.1 85);
+  }
+}
+
+::highlight(maru-thread-find-active) {
+  color: oklch(0.216164 0.028283 77.423);
+  background-color: oklch(0.774202 0.151946 74.331);
+}

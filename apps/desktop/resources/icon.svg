@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The maru mark (DESIGN.md 7c) on the macOS app icon grid: an 824 px rounded square at 100 px with
+       the line mark (the web's favicon) in the dark theme's text color, scaled from its 288 unit box. icon.png is this file
+       rendered by scripts/render-icon.cjs. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#0f0f0f"/>
+  <g transform="translate(100 100) scale(2.861111) translate(-72 -72)"><g fill="none" stroke="#f5f5f5" stroke-width="14" stroke-linecap="butt" stroke-linejoin="miter"><path d="M145 250V145H304"/><path d="M287 182V287H128"/><path d="M170 216H262"/><path d="M216 162V270"/></g></g>
+</svg>

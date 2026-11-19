@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="72 72 288 288">
+  <!-- The legacy launcher icon (Android 8 and earlier): the 72dp visible square, the dark sidebar's surface
+       with the maru line mark in the dark theme's text color. icon.png renders this at 1024. -->
+  <rect x="72" y="72" width="288" height="288" fill="#0f0f0f"/>
+  <g fill="none" stroke="#f5f5f5" stroke-width="14" stroke-linecap="butt" stroke-linejoin="miter"><path d="M145 250V145H304"/><path d="M287 182V287H128"/><path d="M170 216H262"/><path d="M216 162V270"/></g>
+</svg>

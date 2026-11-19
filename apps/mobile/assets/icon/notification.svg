@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="110.4 110.4 211.2 211.2">
+  <!-- Android notification small icon: the maru line mark in white, cropped to the mark. Android uses
+       only the alpha channel. notification.png is this drawing at 96x96. -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="butt" stroke-linejoin="miter"><path d="M145 250V145H304"/><path d="M287 182V287H128"/><path d="M170 216H262"/><path d="M216 162V270"/></g>
+</svg>

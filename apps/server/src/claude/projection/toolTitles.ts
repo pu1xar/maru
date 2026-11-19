@@ -1,0 +1,131 @@
+// Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT License, Copyright (c) 2026 T3 Tools Inc.
+// Source: packages/shared/src/toolActivity.ts (commit ee3b2084). Only the title helpers the
+// projection calls (docs/event-model.md 2.2) and their private dependencies are kept; the
+// `ToolLifecycleItemType` contract import is gone because none of these functions use it.
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function asTrimmedString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function claudeSkillInvocation(
+  toolName: string | null | undefined,
+  input: unknown,
+): { readonly name: string; readonly args: string | undefined } | undefined {
+  if (toolName !== "Skill") return undefined;
+  const record = asRecord(input);
+  const name = asTrimmedString(record?.skill);
+  return name === undefined ? undefined : { name, args: asTrimmedString(record?.args) };
+}
+
+export function isJavaScriptReplTool(toolName: string | null | undefined): boolean {
+  return toolName === "js" || toolName === "cua_repl.js" || toolName === "node_repl.js";
+}
+
+export function dynamicToolSurface(toolName: string | null | undefined, input: unknown) {
+  if (toolName === "cua_repl.js") return "computer" as const;
+  const code = asRecord(input)?.code;
+  return isJavaScriptReplTool(toolName) &&
+    typeof code === "string" &&
+    (/\bsky\s*\./u.test(code) || /["']@oai\/sky["']/u.test(code))
+    ? ("computer" as const)
+    : undefined;
+}
+
+export function dynamicToolTitle(
+  toolName: string | null | undefined,
+  input: unknown,
+  retainedTitle?: string | null,
+): string | undefined {
+  if (isJavaScriptReplTool(toolName)) {
+    const title = asTrimmedString(retainedTitle);
+    const meaningfulTitle =
+      title && title.toLowerCase() !== "js" && title.toLowerCase() !== toolName?.toLowerCase()
+        ? title
+        : undefined;
+    return (
+      asTrimmedString(asRecord(input)?.title) ??
+      meaningfulTitle ??
+      (dynamicToolSurface(toolName, input) === "computer" ? "Computer use" : "Run JavaScript")
+    );
+  }
+  const skill = claudeSkillInvocation(toolName, input);
+  return skill === undefined ? undefined : `Skill: ${skill.name}`;
+}
+
+function recordHasKeys(value: Record<string, unknown> | undefined): value is Record<string, unknown> {
+  return value !== undefined && Object.keys(value).length > 0;
+}
+
+const SEARCH_QUERY_KEYS = ["pattern", "query", "searchTerm", "regex", "grep", "needle"] as const;
+const SEARCH_GLOB_KEYS = ["glob", "globPattern", "glob_pattern", "include", "filePattern", "file_pattern"] as const;
+const SEARCH_TARGET_KEYS = ["path", "target_directory", "targetDirectory", "directory", "cwd", "root"] as const;
+
+function firstInputString(record: Record<string, unknown> | undefined, keys: readonly string[]): string | undefined {
+  if (!record) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const value = asTrimmedString(record[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function searchInputRecord(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  return (
+    [data?.rawInput, data?.input, asRecord(data?.item)?.input]
+      .map(asRecord)
+      .find((record) => recordHasKeys(record ?? undefined)) ?? data
+  );
+}
+
+function searchTargetName(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value.split(/[\\/]/u).findLast((part) => part.length > 0 && part !== ".");
+}
+
+export function formatSearchToolLabel(data: Record<string, unknown> | undefined): string | undefined {
+  const input = searchInputRecord(data);
+  const query = firstInputString(input, SEARCH_QUERY_KEYS);
+  const glob = firstInputString(input, SEARCH_GLOB_KEYS);
+  const target = searchTargetName(firstInputString(input, SEARCH_TARGET_KEYS));
+  if (query && target) {
+    return `Searched ${query} in ${target}`;
+  }
+  if (glob && target) {
+    return `Searched files ${glob} in ${target}`;
+  }
+  if (glob) {
+    return `Searched files ${glob}`;
+  }
+  if (query) {
+    return `Searched ${query}`;
+  }
+  if (target) {
+    return `Searched in ${target}`;
+  }
+  return undefined;
+}
+
+export function formatReadToolLabel(path: string, extraCount = 0): string {
+  const trimmed = path.trim();
+  const suffix = extraCount > 0 ? ` +${extraCount} more` : "";
+  if (!trimmed) {
+    return `Read file${suffix}`;
+  }
+  return `Read ${trimmed}${suffix}`;
+}

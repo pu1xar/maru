@@ -1,0 +1,259 @@
+// Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT License, Copyright (c) 2026 T3 Tools Inc.
+// Source: packages/shared/src/toolOutput.ts.
+// Local changes: the T3 MCP results (html_render, send_to_user, MCP apps, preview recordings) are
+// left out, since Claude Code and Codex never produce them; Effect's Predicate.isObject is a
+// local helper.
+import {
+  isProviderSendTurnSupportedImageMimeType,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+} from "./contracts.ts";
+
+function isObject(value: unknown): value is Record<PropertyKey, unknown> {
+  return (typeof value === "object" && value !== null) || typeof value === "function";
+}
+
+const MAX_PARSED_BYTES = 16_384;
+const MAX_METADATA_BYTES = 8_192;
+const MAX_ID_LENGTH = 256;
+const MAX_THREADS = 100;
+const MAX_CONTENT_BLOCKS = 32;
+const MAX_ENVELOPE_DEPTH = 4;
+const MAX_ENVELOPE_NODES = 128;
+const encoder = new TextEncoder();
+
+interface ResultReadBudget {
+  remainingBytes: number;
+  remainingNodes: number;
+  exceeded: boolean;
+}
+
+interface ResultEnvelope {
+  data?: Record<PropertyKey, unknown>;
+  failed: boolean;
+}
+
+interface CompactToolOutput {
+  isError?: true;
+  threadId?: string;
+  messageId?: string;
+  taskId?: string;
+  scheduledTaskId?: string;
+  status?: "rolled_back";
+  thread?: { threadId: string };
+  threads?: Array<{ threadId?: string; status?: "rolled_back" }>;
+  linkedCount?: number;
+  unlinkedCount?: number;
+}
+
+function readResult(value: unknown, budget: ResultReadBudget, depth = 0): ResultEnvelope {
+  if (depth > MAX_ENVELOPE_DEPTH || budget.remainingNodes-- <= 0) {
+    budget.exceeded = true;
+    return { failed: false };
+  }
+  if (typeof value === "string") {
+    if (value.length > budget.remainingBytes) {
+      budget.exceeded = true;
+      return { failed: false };
+    }
+    const bytes = encoder.encode(value).byteLength;
+    if (bytes > budget.remainingBytes) {
+      budget.exceeded = true;
+      return { failed: false };
+    }
+    budget.remainingBytes -= bytes;
+    try {
+      return readResult(JSON.parse(value), budget, depth + 1);
+    } catch {
+      return { failed: false };
+    }
+  }
+  if (Array.isArray(value)) {
+    if (value.length > MAX_CONTENT_BLOCKS) {
+      budget.exceeded = true;
+      return { failed: false };
+    }
+    let data: ResultEnvelope["data"];
+    let failed = false;
+    for (const block of value) {
+      const text = isObject(block) ? block.text : undefined;
+      const result = readResult(
+        isObject(text) ? (text.text ?? text) : text,
+        budget,
+        depth + 1,
+      );
+      data ??= result.data;
+      failed ||= result.failed;
+      if (budget.exceeded) break;
+    }
+    return { ...(data === undefined ? {} : { data }), failed };
+  }
+  if (!isObject(value)) return { failed: false };
+  const failed =
+    value.isError === true ||
+    value.is_error === true ||
+    value._tag === "OrchestratorMcpFailure" ||
+    value.error != null;
+  const content = value.structuredContent ?? value.content;
+  if (content !== undefined) {
+    const nested = readResult(content, budget, depth + 1);
+    return { ...nested, failed: failed || nested.failed };
+  }
+  return { data: value, failed };
+}
+
+function boundedId(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > MAX_ID_LENGTH || value.trim() === "") {
+    return undefined;
+  }
+  return Array.from(value).join("");
+}
+
+export function compactDynamicToolOutput(value: unknown): CompactToolOutput | undefined {
+  const budget: ResultReadBudget = {
+    remainingBytes: MAX_PARSED_BYTES,
+    remainingNodes: MAX_ENVELOPE_NODES,
+    exceeded: false,
+  };
+  const result = readResult(value, budget);
+  const output: CompactToolOutput = result.failed ? { isError: true } : {};
+  const data = budget.exceeded ? undefined : result.data;
+  if (data !== undefined) {
+    for (const key of ["threadId", "messageId", "taskId", "scheduledTaskId"] as const) {
+      const id = boundedId(data[key]);
+      if (id !== undefined) output[key] = id;
+    }
+    if (data.status === "rolled_back") output.status = "rolled_back";
+    for (const key of ["linkedCount", "unlinkedCount"] as const) {
+      const count = data[key];
+      if (typeof count === "number" && Number.isSafeInteger(count)) output[key] = count;
+    }
+    const nestedThreadId = isObject(data.thread) ? boundedId(data.thread.threadId) : undefined;
+    if (nestedThreadId !== undefined) output.thread = { threadId: nestedThreadId };
+
+    if (Array.isArray(data.threads)) {
+      let complete = data.threads.length <= MAX_THREADS;
+      const threads: NonNullable<CompactToolOutput["threads"]> = [];
+      if (complete) {
+        for (const entry of data.threads) {
+          if (!isObject(entry)) {
+            complete = false;
+            break;
+          }
+          const threadId = boundedId(entry.threadId);
+          const rolledBack = entry.status === "rolled_back";
+          if (threadId === undefined && !rolledBack) {
+            complete = false;
+            break;
+          }
+          threads.push({
+            ...(threadId === undefined ? {} : { threadId }),
+            ...(rolledBack ? { status: "rolled_back" as const } : {}),
+          });
+        }
+      }
+      if (complete) output.threads = threads;
+      else {
+        // Partial batches or top-level ids make the summary parser report a false creation count.
+        delete output.threadId;
+        delete output.status;
+      }
+    }
+  }
+  const oversized = () => encoder.encode(JSON.stringify(output)).byteLength > MAX_METADATA_BYTES;
+  if (oversized()) {
+    delete output.threads;
+    delete output.threadId;
+    delete output.status;
+  }
+  return Object.keys(output).length === 0 ? undefined : output;
+}
+
+// A superset of every needle below, so most outputs are rejected by this single scan.
+const FAILURE_HINT =
+  /enoent|no such|no files found|not found|commandnotfound|not recognized|cannot (?:find path|be found)|exit/i;
+
+/** Some providers report completion even when command output describes a failure. */
+export function toolOutputIndicatesFailure(text: string): boolean {
+  return (
+    FAILURE_HINT.test(text) &&
+    (/file not found|no files found|enoent|no such file|commandnotfoundexception|command not found|is not recognized as the name of a cmdlet|a parameter cannot be found that matches parameter name/i.test(
+      text,
+    ) ||
+      (/cannot find path/i.test(text) && /because it does not exist/i.test(text)) ||
+      (/is not recognized/i.test(text) && /the term '/i.test(text)) ||
+      /exit(?:ed)? with exit code\s+[1-9]\d*/i.test(text) ||
+      /exit code\s*[:\s]\s*[1-9]\d*\b/i.test(text))
+  );
+}
+
+export interface ToolOutputImage {
+  readonly mimeType: string;
+  readonly data?: string;
+}
+
+/** Raster types only, so agent SVG/HTML cannot be served inline. */
+export function readToolOutputImage(block: unknown): ToolOutputImage | null {
+  if (!isObject(block) || block.type !== "image") return null;
+  const source = isObject(block.source) ? block.source : undefined;
+  if (source !== undefined && source.type !== "base64") return null;
+  const mimeType = source === undefined ? block.mimeType : source.media_type;
+  const data = source === undefined ? block.data : source.data;
+  if (typeof mimeType !== "string" || !isProviderSendTurnSupportedImageMimeType(mimeType)) {
+    return null;
+  }
+  const image = { mimeType: mimeType.toLowerCase() };
+  return typeof data === "string" ? { ...image, data } : image;
+}
+
+function outputBlocks(value: unknown): ReadonlyArray<unknown> {
+  if (Array.isArray(value)) return value;
+  if (isObject(value) && Array.isArray(value.content)) return value.content;
+  return [value];
+}
+
+export const MAX_TOOL_OUTPUT_IMAGES = 8;
+
+export const MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH =
+  Math.ceil(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / 3) * 4;
+
+export function toolOutputImageBlocks(value: unknown): ReadonlyArray<unknown> {
+  const blocks: unknown[] = [];
+  for (const block of outputBlocks(value)) {
+    if (readToolOutputImage(block) === null) continue;
+    blocks.push(block);
+    if (blocks.length === MAX_TOOL_OUTPUT_IMAGES) break;
+  }
+  return blocks;
+}
+
+/** Order defines the shared tool-output-image asset index. */
+export function toolOutputImages(value: unknown): ReadonlyArray<ToolOutputImage> {
+  return toolOutputImageBlocks(value).flatMap((block) => readToolOutputImage(block) ?? []);
+}
+
+export function mcpToolResultOutput(result: {
+  readonly content?: unknown;
+  readonly structuredContent?: unknown;
+}): unknown {
+  const structuredContent =
+    (Array.isArray(result.structuredContent) || isObject(result.structuredContent)) &&
+    Object.keys(result.structuredContent).length === 0
+      ? undefined
+      : result.structuredContent;
+  if (structuredContent != null && toolOutputImages(result.content).length > 0) {
+    return { content: result.content, structuredContent };
+  }
+  return structuredContent ?? result.content;
+}
+
+export function omitToolOutputImageData(value: unknown): unknown {
+  const omit = (block: unknown) => {
+    const image = readToolOutputImage(block);
+    return image?.data === undefined ? block : { type: "image", mimeType: image.mimeType };
+  };
+  if (Array.isArray(value)) return value.map(omit);
+  if (isObject(value) && Array.isArray(value.content)) {
+    return { ...value, content: value.content.map(omit) };
+  }
+  return omit(value);
+}

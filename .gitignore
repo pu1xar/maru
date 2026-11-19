@@ -1,0 +1,35 @@
+# dependencies (each package root has its own; releases clone them)
+node_modules/
+
+# build output
+dist/
+dist-ota/
+dist-electron/
+dist-release/
+.vite/
+.vitest-cache/
+coverage/
+*.tsbuildinfo
+
+# Expo and Android native output (prebuild and Gradle make them)
+apps/mobile/android/
+apps/mobile/ios/
+.expo/
+
+# secrets live in ~/.config/maru, never here
+*.p12
+*.jks
+*.keystore
+keystore.properties
+google-services.json
+*-private-key.pem
+private-key.pem
+.env
+.env.*
+
+# local noise
+*.log
+.DS_Store
+
+# agent worktrees (Claude Code isolation)
+.claude/worktrees/
